@@ -23,6 +23,7 @@ Behavior:
 """
 
 import argparse
+import csv
 import signal
 import struct
 import sys
@@ -53,7 +54,29 @@ def parse_args():
                    help="PUB endpoint where we publish lower-body PD targets")
     p.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
     p.add_argument("--verbose", action="store_true")
+    p.add_argument("--log-csv", default=None,
+                   help="If set, append every (state, action) pair to this CSV "
+                        "for offline analysis.")
     return p.parse_args()
+
+
+def open_log(path):
+    """Open a CSV writer for per-tick diagnostic dumps. Returns (file, writer)."""
+    if path is None:
+        return None, None
+    f = open(path, "w", buffering=1)  # line-buffered so a crash still leaves data
+    w = csv.writer(f)
+    header = ["t_perf"]
+    header += ["seq"]
+    header += [f"q_{i}" for i in range(wire_protocol.N_JOINTS)]
+    header += [f"dq_{i}" for i in range(wire_protocol.N_JOINTS)]
+    header += ["qw", "qx", "qy", "qz"]
+    header += ["wx", "wy", "wz"]
+    header += ["vx", "yaw_target", "vy", "height",
+               "torso_yaw", "torso_pitch", "torso_roll"]
+    header += [f"qt_{i}" for i in range(wire_protocol.N_LOWER_TARGETS)]
+    w.writerow(header)
+    return f, w
 
 
 class _Stop:
@@ -95,12 +118,21 @@ def main():
     poller = zmq.Poller()
     poller.register(state_sub, zmq.POLLIN)
 
+    log_file, log_writer = open_log(args.log_csv)
+    if log_writer is not None:
+        print(f"[sidecar] CSV log: {args.log_csv}")
+
     cmds = AmoCommands()
     last_state_seq = -1
     n_ticks = 0
     n_publish = 0
     next_tick = time.perf_counter()
     log_t = next_tick
+
+    # latest_state persists across iterations: we accumulate the most recent
+    # state across the ~300 polls that happen between two 50 Hz ticks. It gets
+    # reset to None only AFTER we consume it on a tick.
+    latest_state = None
 
     print("[sidecar] entering control loop @ 50 Hz")
     while not stop.flag:
@@ -111,7 +143,6 @@ def main():
         # Block briefly so an idle loop doesn't burn CPU.
         events = dict(poller.poll(timeout=int(wait_ms)))
 
-        latest_state = None
         if state_sub in events:
             # Drain (CONFLATE keeps only the newest; this is belt-and-suspenders).
             while True:
@@ -163,6 +194,21 @@ def main():
         action_pub.send(wire_protocol.pack_action(seq, out_ts, q_target.tolist()))
         n_publish += 1
 
+        if log_writer is not None:
+            row = [time.perf_counter(), seq]
+            row.extend(q)
+            row.extend(dq)
+            row.extend(quat)
+            row.extend(ang_vel)
+            row.extend(cmd_arr[:7])
+            row.extend(q_target.tolist())
+            log_writer.writerow(row)
+
+        # Consumed: clear so the next batch of polls starts fresh. Without
+        # this, a stale latest_state could persist across a sidecar pause and
+        # we'd re-publish the same action with a different timestamp.
+        latest_state = None
+
         if args.verbose and (now - log_t) > 1.0:
             print(f"[sidecar] ticks={n_ticks} pubs={n_publish} "
                   f"last_seq={seq} q_target[knee_L]={q_target[3]:+.3f}")
@@ -170,6 +216,8 @@ def main():
 
     # Cleanup
     print(f"\n[sidecar] stopping (ticks={n_ticks}, pubs={n_publish})")
+    if log_file is not None:
+        log_file.close()
     state_sub.close(linger=0)
     action_pub.close(linger=0)
     ctx.term()
