@@ -85,10 +85,16 @@ add_library(zmq_camera_recorder OBJECT camera/zmq_camera_recorder.cpp)
 target_include_directories(zmq_camera_recorder PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${ZMQ_INCLUDE_DIRS})
 target_link_libraries(zmq_camera_recorder PUBLIC ${ZMQ_LIBRARIES} preview_server pthread)
 
-# g1 robot + controller
+# amo_bridge: ZMQ link to the Python AMO sidecar (state PUB / action SUB).
+add_library(amo_bridge OBJECT g1/amo/amo_bridge.cpp g1/amo/amo_zmq_helper.cpp)
+target_include_directories(amo_bridge PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${ZMQ_INCLUDE_DIRS})
+target_link_libraries(amo_bridge PUBLIC ${ZMQ_LIBRARIES} unitree_sdk2 pthread)
+
+# g1 robot + controller. Links against amo_bridge because G1Controller owns
+# an AmoBridge member and calls publish_state / latest_action.
 add_library(g1 OBJECT g1/g1Robot.cpp g1/g1Controller.cpp)
 target_include_directories(g1 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(g1 PUBLIC unitree_sdk2)
+target_link_libraries(g1 PUBLIC unitree_sdk2 amo_bridge)
 target_compile_definitions(g1 PRIVATE
   G1_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/g1/model/upperBodyJointBounds.yaml"
   READER_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
@@ -113,11 +119,11 @@ target_compile_definitions(g1_upper_body_reader PRIVATE
 
 add_executable(collect collect.cpp)
 target_include_directories(collect PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 inspire_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
+target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 amo_bridge inspire_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
 
 add_executable(teleoperate teleoperate.cpp)
 target_include_directories(teleoperate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(teleoperate PRIVATE g1_upper_body_reader g1 upper_body_reader yaml-cpp)
+target_link_libraries(teleoperate PRIVATE g1_upper_body_reader g1 amo_bridge upper_body_reader yaml-cpp)
 
 target_compile_definitions(teleoperate PRIVATE
   CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config.yaml"
@@ -126,7 +132,7 @@ target_compile_definitions(teleoperate PRIVATE
 
 file(GLOB TEST_SOURCES test/*.cpp)
 # DDS-based tests that link against unitree_sdk2 instead of the default test deps
-set(DDS_TESTS inspire_g1_test retarget_test camera_test)
+set(DDS_TESTS inspire_g1_test retarget_test camera_test inspire_force_test)
 foreach(test_source ${TEST_SOURCES})
   get_filename_component(test_name ${test_source} NAME_WE)
   if(${test_name} IN_LIST DDS_TESTS)
@@ -158,6 +164,13 @@ target_include_directories(collect_cli_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # DDS-based inspire hand test (communicates via G1 DDS topics)
 add_executable(inspire_g1_test test/inspire_g1_test.cpp)
 target_link_libraries(inspire_g1_test PRIVATE unitree_sdk2)
+
+# Live fingertip-force readout (USB or G1 DDS, selected via yaml config)
+add_executable(inspire_force_test test/inspire_force_test.cpp)
+target_include_directories(inspire_force_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfx_inspire_service/include)
+target_link_libraries(inspire_force_test PRIVATE inspire_retargeter manus_reader unitree_sdk2 yaml-cpp)
 
 add_library(inspire_retargeter OBJECT
   hand_retarget/inspire/inspire_retargeter.cpp
