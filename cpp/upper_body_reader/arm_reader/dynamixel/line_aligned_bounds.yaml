@@ -31,8 +31,8 @@ left_wrist_roll:
 left_wrist_yaw:
   correct_boundary: lower
   direction_aligned: true
-  lower: 0.8157476830945893
-  upper: -2.778039206860896
+  lower: 2.387076048313715
+  upper: -1.191903072187143
 right_elbow:
   correct_boundary: lower
   direction_aligned: false
