@@ -32,6 +32,7 @@ constexpr int kIndexFinger = 3;
 constexpr int kNumFingers = 6;
 // Right hand occupies indices 0-5, left hand 6-11
 constexpr int kRightHandOffset = 0;
+constexpr int kLeftHandOffset = 6;
 constexpr int kTotalHandJoints = 12;
 
 int main(int argc, char** argv)
@@ -77,7 +78,7 @@ int main(int argc, char** argv)
     float index_target = 1.0f;
     bool closing = true;
 
-    std::cout << "Sweeping right-hand index finger (close -> open -> close ...)\n";
+    std::cout << "Sweeping both index fingers (close -> open -> close ...)\n";
     std::cout << "Press Ctrl+C to stop.\n\n";
 
     while (running.load())
@@ -98,14 +99,17 @@ int main(int argc, char** argv)
         }
 
         cmd.cmds()[kRightHandOffset + kIndexFinger].q() = index_target;
+        cmd.cmds()[kLeftHandOffset + kIndexFinger].q() = index_target;
         cmd_pub->Write(cmd);
 
         // Read back state
         {
             std::lock_guard<std::mutex> lock(state_mtx);
-            float actual = state.states()[kRightHandOffset + kIndexFinger].q();
-            std::cout << "index target: " << index_target
-                      << "  actual: " << actual << "        \r" << std::flush;
+            float actual_r = state.states()[kRightHandOffset + kIndexFinger].q();
+            float actual_l = state.states()[kLeftHandOffset + kIndexFinger].q();
+            std::cout << "target: " << index_target
+                      << "  R actual: " << actual_r
+                      << "  L actual: " << actual_l << "        \r" << std::flush;
         }
 
         std::this_thread::sleep_for(interval);
