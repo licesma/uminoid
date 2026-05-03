@@ -54,10 +54,7 @@ InspireRetargeter::InspireRetargeter(
     const std::string& recording_label,
     const std::function<void(const std::string&)>& raise_error
 )
-    : left_enabled_(left_enabled),
-      right_enabled_(right_enabled),
-      recording_label_(recording_label),
-      manus_(manus_defaults::LEFT_ADDRESS, manus_defaults::RIGHT_ADDRESS, raise_error)
+    : HandRetargeter(left_enabled, right_enabled, recording_label, raise_error)
 {
     YAML::Node config = YAML::LoadFile(BOUNDS_PATH);
     left_bounds_  = load_bounds(config["left"]);
@@ -100,27 +97,26 @@ opt<InspirePose> InspireRetargeter::retarget(const opt<ManusHand>& hand, HandSid
    return std::nullopt;
 }
 
-void InspireRetargeter::retarget_loop(
-    const std::function<bool()>& stop,
-    const std::function<int()>&  collection_id,
-    const std::function<bool()>& pause
+void InspireRetargeter::retarget_step(
+    const opt<ManusHand>& left,
+    const opt<ManusHand>& right,
+    int  collection_id,
+    bool paused
 ) {
-    while (auto pose = manus_.wait_for_next(stop)) {
-        auto& [left, right] = *pose;
+    opt<InspirePose> left_target  = left_enabled_  ? retarget(left,  HandSide::LEFT)  : std::nullopt;
+    opt<InspirePose> right_target = right_enabled_ ? retarget(right, HandSide::RIGHT) : std::nullopt;
 
-        opt<InspirePose> left_target  = left_enabled_  ? retarget(*left,  HandSide::LEFT)  : std::nullopt;
-        opt<InspirePose> right_target = right_enabled_ ? retarget(*right, HandSide::RIGHT) : std::nullopt;
+    send(left_target, right_target);
 
-        send(left_target, right_target);
+    auto [left_fb, right_fb] = read_feedback();
 
-        auto [left_fb, right_fb] = read_feedback();
-
-        if (!pause() && hand_csv_) {
-            hand_csv_.write_line(
-                format_line(collection_id(), Time::ts(),
-                            left_target, right_target, left_fb, right_fb));
-        }
+    if (!paused && hand_csv_) {
+        hand_csv_.write_line(
+            format_line(collection_id, Time::ts(),
+                        left_target, right_target, left_fb, right_fb));
     }
+}
 
+void InspireRetargeter::finish() {
     hand_csv_.close();
 }

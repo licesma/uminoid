@@ -119,7 +119,7 @@ target_compile_definitions(g1_upper_body_reader PRIVATE
 
 add_executable(collect collect.cpp)
 target_include_directories(collect PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 amo_bridge inspire_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
+target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 amo_bridge hand_retargeter inspire_retargeter dex3_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
 
 add_executable(teleoperate teleoperate.cpp)
 target_include_directories(teleoperate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -151,7 +151,7 @@ endforeach()
 
 add_executable(retarget_test test/retarget_test.cpp)
 target_include_directories(retarget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(retarget_test PRIVATE inspire_retargeter manus_reader)
+target_link_libraries(retarget_test PRIVATE hand_retargeter inspire_retargeter manus_reader)
 
 add_executable(camera_test test/camera_test.cpp)
 target_include_directories(camera_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -174,7 +174,13 @@ add_executable(inspire_force_test test/inspire_force_test.cpp)
 target_include_directories(inspire_force_test PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfx_inspire_service/include)
-target_link_libraries(inspire_force_test PRIVATE inspire_retargeter manus_reader unitree_sdk2 yaml-cpp)
+target_link_libraries(inspire_force_test PRIVATE hand_retargeter inspire_retargeter manus_reader unitree_sdk2 yaml-cpp)
+
+add_library(hand_retargeter OBJECT
+  hand_retarget/hand_retargeter.cpp
+)
+target_include_directories(hand_retargeter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(hand_retargeter PUBLIC manus_reader)
 
 add_library(inspire_retargeter OBJECT
   hand_retarget/inspire/inspire_retargeter.cpp
@@ -185,7 +191,15 @@ add_library(inspire_retargeter OBJECT
 target_include_directories(inspire_retargeter PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfx_inspire_service/include)
-target_link_libraries(inspire_retargeter PUBLIC yaml-cpp manus_reader unitree_sdk2)
+target_link_libraries(inspire_retargeter PUBLIC hand_retargeter yaml-cpp manus_reader unitree_sdk2)
+
+add_library(dex3_retargeter OBJECT
+  hand_retarget/dex3/single_dex3_controller.cpp
+  hand_retarget/dex3/single_dex3_retargeter.cpp
+  hand_retarget/dex3/dex3_retargeter.cpp
+)
+target_include_directories(dex3_retargeter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(dex3_retargeter PUBLIC hand_retargeter yaml-cpp manus_reader unitree_sdk2)
 
 
 
