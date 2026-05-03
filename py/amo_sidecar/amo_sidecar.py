@@ -44,7 +44,7 @@ CONTROL_DT = 1.0 / CONTROL_HZ
 def parse_args():
     p = argparse.ArgumentParser()
     here = Path(__file__).resolve().parent
-    amo_dir = here.parent / "third_party" / "AMO"
+    amo_dir = here.parent.parent / "third_party" / "AMO"
     p.add_argument("--policy", default=str(amo_dir / "amo_jit.pt"))
     p.add_argument("--adapter", default=str(amo_dir / "adapter_jit.pt"))
     p.add_argument("--norm-stats", default=str(amo_dir / "adapter_norm_stats.pt"))
@@ -52,7 +52,7 @@ def parse_args():
                    help="SUB endpoint where C++ publishes robot state")
     p.add_argument("--action-endpoint", default="tcp://127.0.0.1:5556",
                    help="PUB endpoint where we publish lower-body PD targets")
-    p.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
+    p.add_argument("--device", default="cuda", choices=["cpu", "cuda"])
     p.add_argument("--verbose", action="store_true")
     p.add_argument("--log-csv", default=None,
                    help="If set, append every (state, action) pair to this CSV "
