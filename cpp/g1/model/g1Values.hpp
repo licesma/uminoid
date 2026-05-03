@@ -122,4 +122,4 @@ inline constexpr std::array<double, G1_NUM_MOTOR> initial_pose = []() {
 
 // Resting elbow angle parked on the side whose arm is disabled (no exo input).
 // Keeps the disabled arm out of the way instead of dangling at q=0.
-inline constexpr double DISABLED_ARM_ELBOW_Q = 1.0;
+inline constexpr double DISABLED_ARM_ELBOW_Q = 0.8;
