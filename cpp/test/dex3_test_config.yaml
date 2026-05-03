@@ -1,0 +1,101 @@
+# Dex3-1 hand test config.
+#
+# Three test modes (chosen automatically from the flags below):
+#
+#   Step 1 — READ-ONLY smoke test (safest)
+#       left.enabled = false, right.enabled = false, hold = false
+#
+#   Step 2 — SOFT HOLD at startup position
+#       left.enabled = false, right.enabled = false, hold = true
+#
+#   Step 3 — DRIVE 3-DoF curl (palm bend per finger)
+#       left.enabled = true and/or right.enabled = true
+#       Active joints (palm bends): thumb_1, index_0, middle_0.
+#         Their q is open + curl * (closed - open), where curl in [0,1] comes
+#         from manus (or 0 if manus disabled). "open" is targets.<joint>;
+#         "closed" is closed.<finger>. Driven with active_kp / active_kd.
+#       Static joints (4 others): held at targets.<joint> with static_kp/kd.
+#       Every commanded q is slew-limited at ramp_rate rad/s.
+#
+# Joint limits (radians). (c) marks the limit in the closing direction.
+#
+#   joint        left min     left max   | right min     right max
+#   ----------+----------------------- +-------------------------
+#   thumb_0    | -1.05         1.05     | -1.05           1.05
+#   thumb_1    | -0.724 (c)    0.92     | -1.05 (c)       0.742
+#   thumb_2    |  0            1.75     | -1.75           0
+#   index_0    | -1.57 (c)     0        |  0              1.57 (c)
+#   index_1    | -1.75         0        |  0              1.75
+#   middle_0   | -1.57 (c)     0        |  0              1.57 (c)
+#   middle_1   | -1.75         0        |  0              1.75
+
+network_interface: "enx00e04c6803fc"
+
+hold: false
+
+# Slew limit on commanded q (rad/s). Applied per joint during DRIVE.
+ramp_rate: 0.6
+
+# Gains for the 3 ACTIVE palm-bend joints (thumb_1, index_0, middle_0).
+active_kp: 1.5
+active_kd: 0.2
+
+# Gains for the 4 STATIC joints. Lower kp + relatively higher kd: resists
+# drift but doesn't fight tendon coupling when the palm bend moves.
+static_kp: 0.6
+static_kd: 0.3
+
+# Manus glove ZMQ source. If enabled=false, curls stay at 0 (open hand pose).
+manus:
+  enabled: true
+  left_address:  "tcp://localhost:8002"
+  right_address: "tcp://localhost:8003"
+  # Per-finger normalization. Source signal differs per finger:
+  #   thumb  -> manus pinky_to_thumb
+  #   index  -> manus wrist_to_tip
+  #   middle -> manus wrist_to_tip
+  # curl = clamp((measured - low) / (high - low), 0, 1).
+  # invert: true flips 0<->1 after normalization (use when the manus signal
+  # direction is opposite to what dex3 expects).
+  bounds:
+    left:
+      thumb:  { low: 0.0,   high: 0.10, invert: true }
+      index:  { low: 0.105, high: 0.18 }
+      middle: { low: 0.105, high: 0.18 }
+    right:
+      thumb:  { low: 0.0,   high: 0.10 }   # verify direction once enabled
+      index:  { low: 0.101, high: 0.178 }
+      middle: { low: 0.101, high: 0.175 }
+
+left:
+  enabled: true
+  targets:                # static joints: held here. Active palm bends:
+    thumb_0:  -0.474      # ...this is the q at curl=0 (open).
+    thumb_1:   0.92       # active (palm bend, full open = URDF max)
+    thumb_2:   0.522
+    index_0:   0.0        # active (palm bend, "open" value)
+    index_1:  -0.628
+    middle_0:  0.0        # active (palm bend, "open" value)
+    middle_1: -0.628
+  closed:                 # palm-bend q at curl=1
+    thumb:  -0.724        # full close = URDF min
+    index:  -1.57
+    middle: -1.57
+
+right:
+  enabled: false
+  targets:
+    thumb_0:  -0.401
+    thumb_1:   0.742      # full open = URDF max
+    thumb_2:  -0.522
+    index_0:   0.0
+    index_1:   0.628
+    middle_0:  0.0
+    middle_1:  0.628
+  closed:
+    thumb:  -1.05         # full close = URDF min
+    index:   1.57
+    middle:  1.57
+
+publish_rate_hz: 100
+print_rate_hz: 10
