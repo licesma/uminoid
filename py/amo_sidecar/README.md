@@ -17,7 +17,7 @@ Python-side glue for running the AMO whole-body policy
 ## Running the sidecar
 
 ```bash
-cd amo_sidecar
+cd py/amo_sidecar
 python amo_sidecar.py \
   --state-endpoint  tcp://127.0.0.1:5555 \
   --action-endpoint tcp://127.0.0.1:5556 \
