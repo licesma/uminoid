@@ -7,6 +7,7 @@ Requires: img2sixel (apt install libsixel-bin) and an iTerm2/kitty/WezTerm-class
 terminal that renders sixel.
 """
 import fcntl
+import json
 import os
 import pty
 import select
@@ -23,6 +24,7 @@ import urllib.request
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COLLECT_BIN = os.path.join(REPO_ROOT, "cpp", "build", "collect")
 STREAM_URL  = "http://127.0.0.1:8080/stream.mjpg"
+IMU_URL     = "http://127.0.0.1:8080/imu"
 
 # Approximate terminal cell size in pixels (only used to size the sixel image).
 # iTerm2 on Retina displays uses much larger cells than a plain xterm; tune
@@ -132,6 +134,33 @@ def video_loop(top_row: int, video_rows: int, cols: int, stop: threading.Event) 
             break
 
 
+def imu_loop(row: int, cols: int, stop: threading.Event) -> None:
+    """Poll /imu and paint a single status line at `row` (1-based). The line
+    sits between the video pane and the collect TUI, outside the TUI's scroll
+    region, so repaints don't fight the child process."""
+    while not stop.is_set():
+        try:
+            with urllib.request.urlopen(IMU_URL, timeout=1) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            pitch = float(data.get("pitch_deg", 0.0))
+            roll  = float(data.get("roll_deg", 0.0))
+            text  = f"  Roll: {roll:+6.1f}°    Pitch: {pitch:+6.1f}°"
+        except Exception:
+            text = "  Roll:   ---       Pitch:   ---"
+        text = text[:cols].ljust(cols)
+        out  = b"\0337"                           # save cursor
+        out += f"\033[{row};1H".encode()         # move to status row
+        out += b"\033[2K"                         # clear line
+        out += text.encode("utf-8")
+        out += b"\0338"                           # restore cursor
+        try:
+            write_stdout(out)
+        except OSError:
+            break
+        if stop.wait(0.2):
+            return
+
+
 def set_pty_size(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
@@ -185,6 +214,13 @@ def main() -> int:
         daemon=True,
     )
     vt.start()
+
+    imu_t = threading.Thread(
+        target=imu_loop,
+        args=(video_rows + 1, term_cols, stop),
+        daemon=True,
+    )
+    imu_t.start()
 
     try:
         while True:
