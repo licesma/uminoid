@@ -106,7 +106,11 @@ inline constexpr std::array<float, G1_NUM_MOTOR> damping = []() {
 // Legs + waist sit in AMO's default crouch (third_party/AMO/play_amo.py
 // `default_dof_pos[:15]`)
 //
-// Arm + wrist slots stay at 0
+// Elbows ramp to DISABLED_ARM_ELBOW_Q so the limbs don't dangle at q=0 before
+// arm following kicks in (whether enabled or not). All other arm + wrist
+// slots stay at 0.
+inline constexpr double DISABLED_ARM_ELBOW_Q = 0.2;
+
 inline constexpr std::array<double, G1_NUM_MOTOR> initial_pose = []() {
     std::array<double, G1_NUM_MOTOR> p{};
     // -- AMO crouch: legs --
@@ -116,10 +120,9 @@ inline constexpr std::array<double, G1_NUM_MOTOR> initial_pose = []() {
     p[RightHipPitch]   = -0.1;
     p[RightKnee]       =  0.3;
     p[RightAnklePitch] = -0.2;
-    // -- waist + arms: zeros (AMO default) --
+    // -- waist: zeros (AMO default) --
+    // -- arms: parked elbows, zeros elsewhere --
+    p[LeftElbow]       = DISABLED_ARM_ELBOW_Q;
+    p[RightElbow]      = DISABLED_ARM_ELBOW_Q;
     return p;
 }();
-
-// Resting elbow angle parked on the side whose arm is disabled (no exo input).
-// Keeps the disabled arm out of the way instead of dangling at q=0.
-inline constexpr double DISABLED_ARM_ELBOW_Q = 0.8;

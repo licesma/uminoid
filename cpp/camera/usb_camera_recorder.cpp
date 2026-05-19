@@ -9,6 +9,7 @@ using namespace usb_camera_constants;
 
 #include <librealsense2/rs.hpp>
 
+#include <cmath>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -30,7 +31,7 @@ UsbCameraRecorder::UsbCameraRecorder(const std::string& recording_label,
                                      PreviewServer* preview)
     : output_dir_(repo_constants::DATA_DIR + "/" + recording_label),
       raise_error_(raise_error),
-      csv_(output_dir_ + "/camera.csv", "collection_id,frame_number,camera_timestamp_ms,host_timestamp"),
+      csv_(output_dir_ + "/camera.csv", "collection_id,frame_number,camera_timestamp_ms,host_timestamp,pitch_deg,roll_deg"),
       pipe_(context_),
       preview_(preview) {
     try {
@@ -47,9 +48,27 @@ UsbCameraRecorder::UsbCameraRecorder(const std::string& recording_label,
             }
         });
 
-        rs2::config cfg;
-        cfg.enable_stream(RS2_STREAM_COLOR, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_RGB8, FRAMERATE);
-        device_ = pipe_.start(cfg).get_device();
+        // Try color + accel first (D435i). If the device has no IMU, or the
+        // accel rate isn't resolvable on this link, fall back to color only —
+        // pitch/roll will just stay at 0.
+        auto start_with_accel = [&]() -> bool {
+            try {
+                rs2::config cfg;
+                cfg.enable_stream(RS2_STREAM_COLOR, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_RGB8, FRAMERATE);
+                cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F, ACCEL_FRAMERATE);
+                device_ = pipe_.start(cfg).get_device();
+                return true;
+            } catch (const std::exception& e) {
+                std::cerr << "[Camera] accel start failed: " << e.what() << "\n";
+                return false;
+            }
+        };
+        if (!start_with_accel()) {
+            rs2::config cfg;
+            cfg.enable_stream(RS2_STREAM_COLOR, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_RGB8, FRAMERATE);
+            device_ = pipe_.start(cfg).get_device();
+            std::cerr << "[Camera] IMU unavailable — pitch/roll will read 0\n";
+        }
     } catch (const std::exception& e) {
         raise_error_(std::string("[Camera] ") + e.what());
     }
@@ -82,6 +101,11 @@ void UsbCameraRecorder::collect_loop(const std::function<int()>&  collection_id,
         }
 
         int frame_count = 0;
+        // EMA-smoothed; pitch: level → ~0°, sky → negative, floor → positive.
+        // roll: level → ~0°, tilted right → positive, left → negative.
+        float pitch_deg = 0.0f;
+        float roll_deg  = 0.0f;
+        constexpr float RAD2DEG = 180.0f / static_cast<float>(M_PI);
 
         while (!stop()) {
             rs2::frameset frames;
@@ -94,11 +118,28 @@ void UsbCameraRecorder::collect_loop(const std::function<int()>&  collection_id,
             }
             rs2::video_frame color = frames.get_color_frame();
             if (!color) continue;
+
+            if (auto accel = frames.first_or_default(RS2_STREAM_ACCEL)) {
+                auto a = accel.as<rs2::motion_frame>().get_motion_data();
+                // D435i camera frame: +X right, +Y down, +Z forward.
+                float ip = std::atan2(a.z, std::sqrt(a.x * a.x + a.y * a.y)) * RAD2DEG;
+                // Camera is mounted rotated 180° around its forward axis, so
+                // "level" gravity reads with ay negative — flip both components.
+                float ir = std::atan2(-a.x, -a.y) * RAD2DEG;
+                pitch_deg = 0.9f * pitch_deg + 0.1f * ip;
+                roll_deg  = 0.9f * roll_deg  + 0.1f * ir;
+                if (preview_) preview_->push_imu(pitch_deg, roll_deg);
+            }
+
             push_to_preview(preview_, color);
             if (pause()) continue;
 
             std::ostringstream row;
-            row << collection_id() << "," << frame_count << "," << std::fixed << std::setprecision(3) << color.get_timestamp() << "," << Time::ts();
+            row << collection_id() << "," << frame_count << ","
+                << std::fixed << std::setprecision(3) << color.get_timestamp() << ","
+                << Time::ts() << ","
+                << std::fixed << std::setprecision(2) << pitch_deg << ","
+                << std::fixed << std::setprecision(2) << roll_deg;
             csv_.write_line(row.str());
 
             const uint8_t* data = static_cast<const uint8_t*>(color.get_data());

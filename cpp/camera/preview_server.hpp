@@ -46,6 +46,9 @@ public:
     // `stride` is bytes per row of `rgb` (usually width * 3).
     void push_rgb(const uint8_t* rgb, int width, int height, int stride);
 
+    // Latest camera tilt (degrees), served at GET /imu as JSON.
+    void push_imu(float pitch_deg, float roll_deg);
+
 private:
     void accept_loop_();
     void encode_loop_();
@@ -75,4 +78,7 @@ private:
     std::condition_variable jpeg_cv_;
     std::vector<uint8_t>    latest_jpeg_;
     uint64_t                latest_jpeg_seq_ = 0;
+
+    std::atomic<float>      latest_pitch_deg_{0.f};
+    std::atomic<float>      latest_roll_deg_{0.f};
 };

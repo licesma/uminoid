@@ -3,8 +3,9 @@
 #include "camera/usb_camera_recorder.hpp"
 #include "camera/zmq_camera_recorder.hpp"
 #include "collect_ui.hpp"
+#include "hand_retarget/dex3/dex3_retargeter.hpp"
+#include "hand_retarget/hand_retargeter.hpp"
 #include "hand_retarget/inspire/g1_inspire_retargeter.hpp"
-#include "hand_retarget/inspire/inspire_retargeter.hpp"
 #include "hand_retarget/inspire/usb_inspire_retargeter.hpp"
 #include "upper_body_reader/exo_upper_body_reader.hpp"
 #include "upper_body_reader/g1_upper_body_reader.hpp"
@@ -24,7 +25,7 @@ namespace config {
     static const YAML::Node yaml = YAML::LoadFile(PATH);
 
     inline const bool upper_body_enabled = yaml["upper_body"]["enabled"].as<bool>();
-    inline const bool inspire_enabled    = yaml["inspire"]["enabled"].as<bool>();
+    inline const bool hand_enabled       = yaml["hand"]["enabled"].as<bool>();
     inline const bool camera_enabled     = yaml["camera"]["enabled"].as<bool>();
     inline const std::string upper_body_source = yaml["upper_body"]["source"] ? yaml["upper_body"]["source"].as<std::string>() : std::string("exo");
     inline const std::string camera_source = yaml["camera"]["source"] ? yaml["camera"]["source"].as<std::string>() : std::string("usb");
@@ -46,16 +47,18 @@ namespace config {
             : std::string("");
     inline const bool is_simulation = yaml["is_simulation"].as<bool>();
 
-    inline const std::string inspire_source =
-        yaml["inspire"]["source"] ? yaml["inspire"]["source"].as<std::string>() : std::string("usb");
-    inline const std::string inspire_network_interface =
-        yaml["inspire"]["network_interface"]
-            ? yaml["inspire"]["network_interface"].as<std::string>()
+    inline const std::string hand_source =
+        yaml["hand"]["source"] ? yaml["hand"]["source"].as<std::string>() : std::string("inspire_usb");
+    inline const std::string hand_network_interface =
+        yaml["hand"]["network_interface"]
+            ? yaml["hand"]["network_interface"].as<std::string>()
             : std::string("");
-    inline const bool    inspire_left_enabled  = yaml["inspire"]["left"]["enabled"].as<bool>();
-    inline const bool    inspire_right_enabled = yaml["inspire"]["right"]["enabled"].as<bool>();
-    inline const uint8_t inspire_left_id       = yaml["inspire"]["left"]["id"].as<int>();
-    inline const uint8_t inspire_right_id      = yaml["inspire"]["right"]["id"].as<int>();
+    inline const bool    hand_left_enabled  = yaml["hand"]["left"]["enabled"].as<bool>();
+    inline const bool    hand_right_enabled = yaml["hand"]["right"]["enabled"].as<bool>();
+    inline const uint8_t hand_left_id       = yaml["hand"]["left"]["id"]
+        ? yaml["hand"]["left"]["id"].as<int>()  : 0;
+    inline const uint8_t hand_right_id      = yaml["hand"]["right"]["id"]
+        ? yaml["hand"]["right"]["id"].as<int>() : 0;
 
     // Preview is optional; an empty/missing bind_host disables it entirely.
     inline PreviewServer::Config load_preview_cfg() {
@@ -107,9 +110,9 @@ int main() {
                   << ":" << config::preview_cfg.port << "/\n";
     }
 
-    std::unique_ptr<UpperBodyReader>   upper_body;
-    std::unique_ptr<InspireRetargeter> inspire;
-    std::unique_ptr<CameraRecorder>    camera;
+    std::unique_ptr<UpperBodyReader> upper_body;
+    std::unique_ptr<HandRetargeter>  hand;
+    std::unique_ptr<CameraRecorder>  camera;
 
     if (config::upper_body_enabled) {
         if (config::upper_body_source == "g1") {
@@ -128,18 +131,27 @@ int main() {
                 raise_error);
         }
     }
-    if (config::inspire_enabled) {
-        if (config::inspire_source == "g1") {
-            inspire = std::make_unique<G1InspireRetargeter>(
-                config::inspire_left_enabled,
-                config::inspire_right_enabled,
-                config::inspire_network_interface,
+    if (config::hand_enabled) {
+        if (config::hand_source == "inspire_g1") {
+            hand = std::make_unique<G1InspireRetargeter>(
+                config::hand_left_enabled,
+                config::hand_right_enabled,
+                config::hand_network_interface,
+                recording_label, raise_error);
+        } else if (config::hand_source == "dex3") {
+            hand = std::make_unique<Dex3Retargeter>(
+                config::hand_left_enabled,
+                config::hand_right_enabled,
+                config::hand_network_interface,
+                recording_label, raise_error);
+        } else if (config::hand_source == "inspire_usb") {
+            hand = std::make_unique<UsbInspireRetargeter>(
+                config::hand_left_enabled,  config::hand_left_id,
+                config::hand_right_enabled, config::hand_right_id,
                 recording_label, raise_error);
         } else {
-            inspire = std::make_unique<UsbInspireRetargeter>(
-                config::inspire_left_enabled,  config::inspire_left_id,
-                config::inspire_right_enabled, config::inspire_right_id,
-                recording_label, raise_error);
+            raise_error("hand.source must be one of: inspire_usb, inspire_g1, dex3 (got '"
+                        + config::hand_source + "')");
         }
     }
     if (config::camera_enabled) {
@@ -155,10 +167,10 @@ int main() {
 
     ui::add_next(_collection_id.load());
 
-    std::thread camera_thread, upper_body_thread, inspire_thread;
+    std::thread camera_thread, upper_body_thread, hand_thread;
     if (camera)     camera_thread     = std::thread([&] { camera->collect_loop(collection_id, stop, paused); });
     if (upper_body) upper_body_thread = std::thread([&] { upper_body->collect_loop(collection_id, stop, paused); });
-    if (inspire)    inspire_thread    = std::thread([&] { inspire->retarget_loop(stop, collection_id, paused); });
+    if (hand)       hand_thread       = std::thread([&] { hand->retarget_loop(stop, collection_id, paused); });
 
     std::thread display_thread([&] {
         while (running.load()) {
@@ -209,7 +221,7 @@ int main() {
     display_thread.join();
     if (camera_thread.joinable())  camera_thread.join();
     if (upper_body_thread.joinable()) upper_body_thread.join();
-    if (inspire_thread.joinable()) inspire_thread.join();
+    if (hand_thread.joinable()) hand_thread.join();
 
     if (preview) preview->stop();
 

@@ -11,6 +11,7 @@ class PreviewServer;
 
 namespace usb_camera_constants {
     constexpr int FRAMERATE = 30;
+    constexpr int ACCEL_FRAMERATE = 100;  // D435i: 100/200/400 Hz (older fw) or 63/250 Hz (newer); 100 works on both
     constexpr unsigned int FRAME_TIMEOUT_MS = 5000;
     constexpr unsigned int WARMUP_COUNT = 30;
 }

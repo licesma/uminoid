@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -56,6 +57,20 @@ class G1Controller : public G1Robot {
   uint64_t   amo_state_seq_ = 0;    
   // Stays false until initialize_targets_from_robot_state has finished.
   std::atomic<bool> amo_ready_{false};
+  // Latches true the first time process_arm_sample is called while not paused
+  // (i.e. when the user starts the first collection with space). Stays true
+  // for the rest of the session, including across subsequent pauses, so the
+  // robot only begins tracking the operator's arms once they've explicitly
+  // started collecting.
+  std::atomic<bool> arm_following_started_{false};
+  // Stamped when arm_following_started_ flips true. process_arm_sample blends
+  // initial_pose into the operator's pose over a short window so the arms
+  // don't lurch on the very first space press.
+  std::chrono::steady_clock::time_point arm_handoff_time_{};
+  // Set immediately before amo_ready_ flips true. apply_amo_action blends
+  // the C++ ramp endpoint (initial_pose) into the policy's commanded targets
+  // over a short window so the very first AMO tick is not a position step.
+  std::chrono::steady_clock::time_point amo_handoff_time_{};
 
   ArmReadings decode_arm(const ArmLine& sample, bool from_left) const;
   double toG1Angle(G1JointReading reading);

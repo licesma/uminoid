@@ -16,6 +16,19 @@ namespace {
 
 constexpr uint16_t INVALID_EXO_READING = 5000;
 
+// Linear blend window applied to AMO actions right after handoff. At t=0 the
+// commanded targets equal initial_pose (the ramp endpoint), at t=duration they
+// equal pure policy output. Short enough not to soft-mute real balance
+// corrections, long enough to absorb the first non-zero policy residual.
+constexpr double AMO_BLEND_DURATION_S = 1.5;
+
+// Same idea, applied to operator arm tracking after the first space press.
+// At t=0 the per-joint tracking target equals initial_pose; at t=duration it
+// equals the operator's pose; in between, a linear blend. The existing
+// per-sample velocity clamp still runs on top, so a large operator-vs-parked
+// gap that exceeds the ramp's implied velocity is bounded by the clamp.
+constexpr double ARM_FOLLOW_RAMP_DURATION_S = 3.0;
+
 
 constexpr std::array<G1JointIndex, ARM_JOINT_COUNT> LEFT_ARM_JOINTS = {
     G1JointIndex::LeftShoulderPitch, G1JointIndex::LeftShoulderRoll,
@@ -172,12 +185,10 @@ bool G1Controller::initialize_targets_from_robot_state(
   if (stop_requested()) return false;
 
   // Ramp targets come from g1Values.hpp::initial_pose (legs in AMO's default
-  // crouch so the first policy tick is in-distribution; arms parked). Any
-  // disabled arm has its elbow biased to DISABLED_ARM_ELBOW_Q so the limb
-  // doesn't dangle at q=0 with no operator driving it.
-  std::array<double, G1_NUM_MOTOR> final_q = initial_pose;
-  if (!left_enabled_)  final_q[LeftElbow]  = DISABLED_ARM_ELBOW_Q;
-  if (!right_enabled_) final_q[RightElbow] = DISABLED_ARM_ELBOW_Q;
+  // crouch so the first policy tick is in-distribution; both elbows parked at
+  // DISABLED_ARM_ELBOW_Q so neither arm dangles at q=0 before arm following
+  // takes over).
+  const std::array<double, G1_NUM_MOTOR>& final_q = initial_pose;
 
   const double duration = 3.0;
   const int num_steps = static_cast<int>(duration / control_dt_);
@@ -199,6 +210,7 @@ bool G1Controller::initialize_targets_from_robot_state(
         std::chrono::microseconds(static_cast<int>(control_dt_ * 1e6)));
   }
 
+  amo_handoff_time_ = std::chrono::steady_clock::now();
   amo_ready_.store(true);
   return true;
 }
@@ -206,11 +218,20 @@ bool G1Controller::initialize_targets_from_robot_state(
 void G1Controller::process_arm_sample(const ArmLine& sample, bool from_left,
                                       int collection_id, bool record) {
   if (from_left ? !left_enabled_ : !right_enabled_) return;
+  if (record && !arm_following_started_.load(std::memory_order_relaxed)) {
+    arm_handoff_time_ = std::chrono::steady_clock::now();
+    arm_following_started_.store(true, std::memory_order_relaxed);
+  }
+  if (!arm_following_started_.load(std::memory_order_relaxed)) return;
   const std::shared_ptr<const MotorState> ms = motor_state_buffer_.GetData();
   if (!ms) return;
 
   const ArmReadings arm_readings = decode_arm(sample, from_left);
   const double max_step = max_target_velocity_ * control_dt_;
+  const double t_since_handoff = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - arm_handoff_time_).count();
+  const double ramp_alpha =
+      std::clamp(t_since_handoff / ARM_FOLLOW_RAMP_DURATION_S, 0.0, 1.0);
 
   std::lock_guard<std::mutex> lock(update_mutex_);
   MotorCommand motor_command_tmp = make_motor_command(commanded_targets_);
@@ -220,8 +241,13 @@ void G1Controller::process_arm_sample(const ArmLine& sample, bool from_left,
     if (!reading.is_valid) continue;
     const int joint_index = static_cast<int>(reading.joint);
     const double desired_target = toG1Angle(reading);
+    const double tracking_target =
+        ramp_alpha < 1.0
+            ? (1.0 - ramp_alpha) * initial_pose[joint_index] +
+                  ramp_alpha * desired_target
+            : desired_target;
     commanded_targets_.at(joint_index) += std::clamp(
-        desired_target - commanded_targets_.at(joint_index), -max_step,
+        tracking_target - commanded_targets_.at(joint_index), -max_step,
         max_step);
     motor_command_tmp.q_target.at(joint_index) =
         commanded_targets_.at(joint_index);
@@ -270,10 +296,16 @@ void G1Controller::handle_key(char key) {
 void G1Controller::apply_amo_action(const AmoAction& action) {
   if (!amo_ready_.load()) return;
 
+  const double t_since_handoff = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - amo_handoff_time_).count();
+  const double alpha =
+      std::clamp(t_since_handoff / AMO_BLEND_DURATION_S, 0.0, 1.0);
+
   std::lock_guard<std::mutex> lock(update_mutex_);
   for (size_t i = 0; i < AMO_ACTION.size(); ++i) {
     const int idx = static_cast<int>(AMO_ACTION[i]);
-    commanded_targets_[idx] = action.q_target[i];
+    commanded_targets_[idx] =
+        (1.0 - alpha) * initial_pose[idx] + alpha * action.q_target[i];
   }
   motor_command_buffer_.SetData(make_motor_command(commanded_targets_));
 }
