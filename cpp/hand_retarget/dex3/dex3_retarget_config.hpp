@@ -43,12 +43,27 @@ inline constexpr Dex3PerJoint<Dex3CurlEnd> Dex3ActiveCurlEndRight = {{{
     Dex3CurlEnd::high,  // middle_tip_bend   (static — unused)
 }}};
 
+/*
+# Joint limits (radians). (c) marks the limit in the closing direction.
+#
+#   joint        left min     left max   | right min     right max
+#   ----------+----------------------- +-------------------------
+#   thumb_0    | -1.05         1.05     | -1.05           1.05
+#   thumb_1    | -0.724 (c)    0.92     | -1.05 (c)       0.742
+#   thumb_2    |  0            1.75     | -1.75           0
+#   index_0    | -1.57 (c)     0        |  0              1.57 (c)
+#   index_1    | -1.75         0        |  0              1.75
+#   middle_0   | -1.57 (c)     0        |  0              1.57 (c)
+#   middle_1   | -1.75         0        |  0              1.75
+*/
+
+
 // Hold q for each static joint, per side. Anywhere inside the URDF bound is
 // fine. Entries for active joints are unused.
 inline constexpr Dex3PerJoint<float> Dex3StaticHoldQLeft = {{{
-    -0.474f,   // thumb_rotation
+     -0.96f,   // thumb_rotation
      0.0f,     // thumb_palm_bend   (active — unused)
-     0.522f,   // thumb_tip_bend
+     0.722f,   // thumb_tip_bend
      0.0f,     // index_palm_bend   (active — unused)
     -0.628f,   // index_tip_bend
      0.0f,     // middle_palm_bend  (active — unused)
@@ -56,9 +71,9 @@ inline constexpr Dex3PerJoint<float> Dex3StaticHoldQLeft = {{{
 }}};
 
 inline constexpr Dex3PerJoint<float> Dex3StaticHoldQRight = {{{
-    -0.401f,   // thumb_rotation
+     -0.96f,   // thumb_rotation
      0.0f,     // thumb_palm_bend   (active — unused)
-    -0.522f,   // thumb_tip_bend
+    -0.722f,   // thumb_tip_bend
      0.0f,     // index_palm_bend   (active — unused)
      0.628f,   // index_tip_bend
      0.0f,     // middle_palm_bend  (active — unused)

@@ -52,13 +52,28 @@ SingleDex3Retargeter::compute_target(const opt<ManusHand>& hand) const {
         
         float curl = 0.0f;
         if (hand) {
+            // Right hand only: manus index/middle are swapped to cancel a
+            // physical wiring quirk on the right Dex3 hand where slot 3
+            // (URDF's "index_0") drives the physical middle finger and slot
+            // 5 ("middle_0") drives the physical index. Verified on this
+            // robot and on H-E-L's reference hardware. Left hand has no such
+            // swap and is wired straight through.
+            // CSVs stay byte-compatible with H-E-L either way: same slot,
+            // same q — only the operator-side mapping differs.
+            const bool swap_index_middle = (side_ == Dex3Side::Right);
             switch (j) {
                 case Dex3Joint::thumb_palm_bend:
                     curl = apply_curl(manus_bounds_.thumb,  hand->thumb.pinky_to_thumb);  break;
                 case Dex3Joint::index_palm_bend:
-                    curl = apply_curl(manus_bounds_.index,  hand->index.wrist_to_tip);    break;
+                    curl = swap_index_middle
+                        ? apply_curl(manus_bounds_.middle, hand->middle.wrist_to_tip)
+                        : apply_curl(manus_bounds_.index,  hand->index.wrist_to_tip);
+                    break;
                 case Dex3Joint::middle_palm_bend:
-                    curl = apply_curl(manus_bounds_.middle, hand->middle.wrist_to_tip);   break;
+                    curl = swap_index_middle
+                        ? apply_curl(manus_bounds_.index,  hand->index.wrist_to_tip)
+                        : apply_curl(manus_bounds_.middle, hand->middle.wrist_to_tip);
+                    break;
                 default: break;
             }
         }
@@ -69,5 +84,5 @@ SingleDex3Retargeter::compute_target(const opt<ManusHand>& hand) const {
 }
 
 void SingleDex3Retargeter::step(const opt<ManusHand>& hand) {
-    controller_.send_slewed(compute_target(hand));
+    controller_.send(compute_target(hand));
 }

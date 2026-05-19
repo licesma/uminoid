@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
 #include <sstream>
 
 namespace {
@@ -153,6 +154,11 @@ void PreviewServer::stop() {
     if (encode_thread_.joinable()) encode_thread_.join();
 }
 
+void PreviewServer::push_imu(float pitch_deg, float roll_deg) {
+    latest_pitch_deg_.store(pitch_deg, std::memory_order_relaxed);
+    latest_roll_deg_.store(roll_deg,  std::memory_order_relaxed);
+}
+
 void PreviewServer::push_rgb(const uint8_t* rgb, int width, int height, int stride) {
     if (!running_.load()) return;
     const size_t need = static_cast<size_t>(stride) * static_cast<size_t>(height);
@@ -259,6 +265,26 @@ void PreviewServer::serve_client_(int fd) {
           << "Cache-Control: no-store\r\n"
           << "Connection: close\r\n\r\n"
           << INDEX_HTML;
+        const std::string out = r.str();
+        write_all(fd, out.data(), out.size());
+        ::close(fd);
+        return;
+    }
+
+    if (path == "/imu") {
+        std::ostringstream body;
+        body << "{\"pitch_deg\":" << std::fixed << std::setprecision(2)
+             << latest_pitch_deg_.load(std::memory_order_relaxed)
+             << ",\"roll_deg\":" << std::fixed << std::setprecision(2)
+             << latest_roll_deg_.load(std::memory_order_relaxed) << "}";
+        const std::string b = body.str();
+        std::ostringstream r;
+        r << "HTTP/1.0 200 OK\r\n"
+          << "Content-Type: application/json\r\n"
+          << "Content-Length: " << b.size() << "\r\n"
+          << "Cache-Control: no-store\r\n"
+          << "Connection: close\r\n\r\n"
+          << b;
         const std::string out = r.str();
         write_all(fd, out.data(), out.size());
         ::close(fd);

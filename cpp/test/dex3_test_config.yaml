@@ -34,7 +34,7 @@ network_interface: "enx00e04c6803fc"
 hold: false
 
 # Slew limit on commanded q (rad/s). Applied per joint during DRIVE.
-ramp_rate: 0.6
+ramp_rate: 2.2
 
 # Gains for the 3 ACTIVE palm-bend joints (thumb_1, index_0, middle_0).
 active_kp: 1.5
@@ -70,7 +70,7 @@ manus:
 left:
   enabled: true
   targets:                # static joints: held here. Active palm bends:
-    thumb_0:  -0.474      # ...this is the q at curl=0 (open).
+    thumb_0:  0.274      # ...this is the q at curl=0 (open).
     thumb_1:   0.92       # active (palm bend, full open = URDF max)
     thumb_2:   0.522
     index_0:   0.0        # active (palm bend, "open" value)
@@ -83,7 +83,7 @@ left:
     middle: -1.57
 
 right:
-  enabled: false
+  enabled: true
   targets:
     thumb_0:  -0.401
     thumb_1:   0.742      # full open = URDF max

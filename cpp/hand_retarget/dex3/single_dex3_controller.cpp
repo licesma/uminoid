@@ -86,6 +86,8 @@ SingleDex3Controller::State SingleDex3Controller::state() const {
         out.q  [joint] = state_.motor_state()[slot].q();
         out.tau[joint] = state_.motor_state()[slot].tau_est();
     }
+    for (int i = 0; i < Dex3PressSensorCount; ++i)
+        out.press[i] = state_.press_sensor_state()[i].pressure();
     return out;
 }
 

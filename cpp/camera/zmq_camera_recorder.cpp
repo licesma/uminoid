@@ -8,6 +8,7 @@ using namespace zmq_camera_constants;
 #include "utils/time.hpp"
 
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -19,7 +20,7 @@ ZmqCameraRecorder::ZmqCameraRecorder(const std::string& recording_label,
     : output_dir_(repo_constants::DATA_DIR + "/" + recording_label),
       raise_error_(raise_error),
       csv_(output_dir_ + "/camera.csv",
-           "collection_id,frame_number,camera_timestamp_ms,host_timestamp"),
+           "collection_id,frame_number,camera_timestamp_ms,host_timestamp,pitch_deg,roll_deg"),
       ctx_(1),
       sock_(ctx_, zmq::socket_type::pull),
       preview_(preview) {
@@ -70,32 +71,41 @@ void ZmqCameraRecorder::collect_loop(const std::function<int()>&  collection_id,
             if (!sock_.recv(msg, zmq::recv_flags::none)) continue;
             last_packet = now;
 
-            if (msg.size() != FRAME_SIZE) {
+            // Server appends two little-endian float32 fields (pitch, roll —
+            // degrees) after the RGB payload. See g1_files/realsense_raw_rgb.py.
+            constexpr std::size_t EXPECTED = FRAME_SIZE + 2 * sizeof(float);
+            if (msg.size() != EXPECTED) {
                 raise_error_("[ZmqCamera] Unexpected frame size: "
                              + std::to_string(msg.size()) + " (expected "
-                             + std::to_string(FRAME_SIZE) + ")");
+                             + std::to_string(EXPECTED) + ")");
                 break;
             }
 
             const uint8_t* rgb = msg.data<uint8_t>();
+            float pitch_deg = 0.0f, roll_deg = 0.0f;
+            std::memcpy(&pitch_deg, rgb + FRAME_SIZE,                 sizeof(float));
+            std::memcpy(&roll_deg,  rgb + FRAME_SIZE + sizeof(float), sizeof(float));
 
             // Preview sees every frame (including during pause), same as CameraRecorder.
             if (preview_) {
                 preview_->push_rgb(rgb, FRAME_WIDTH, FRAME_HEIGHT, FRAME_STRIDE);
+                preview_->push_imu(pitch_deg, roll_deg);
             }
 
             if (pause()) continue;
 
             // camera_timestamp_ms = -1: the server doesn't forward the RealSense device timestamp
             std::ostringstream row;
-            row << collection_id() << "," << frame_count << ",-1," << Time::ts();
+            row << collection_id() << "," << frame_count << ",-1," << Time::ts()
+                << "," << std::fixed << std::setprecision(2) << pitch_deg
+                << "," << std::fixed << std::setprecision(2) << roll_deg;
             csv_.write_line(row.str());
 
             std::ostringstream fn;
             fn << frames_dir << "/frame_"
                << std::setfill('0') << std::setw(6) << frame_count << ".raw";
 
-            if (!write_bytes(fn.str(), rgb, msg.size())) {
+            if (!write_bytes(fn.str(), rgb, FRAME_SIZE)) {
                 raise_error_("[ZmqCamera] Failed to write " + fn.str());
                 break;
             }

@@ -30,9 +30,13 @@ class SingleDex3Controller {
 public:
     using JointPose = Dex3PerJoint<float>;
 
+    using PressArray = std::array<
+        std::array<float, Dex3PressValuesPerEntry>, Dex3PressSensorCount>;
+
     struct State {
-        JointPose q{};
-        JointPose tau{};   // tau_est from MotorState_, used as fingertip-force proxy
+        JointPose  q{};
+        JointPose  tau{};     // tau_est from MotorState_, fingertip-force proxy
+        PressArray press{};   // press_sensor_state[i].pressure() per i
     };
 
     explicit SingleDex3Controller(Dex3Side side);

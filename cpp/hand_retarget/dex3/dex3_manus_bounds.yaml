@@ -1,0 +1,16 @@
+# Manus glove normalization bounds for the Dex3 retargeter. Copied from
+# inspire_retarget_bounds.yaml (same gloves, same operator). Dex3 only uses
+# thumb / index / middle.
+#
+# invert: true flips 0<->1 after normalization (use when the manus signal
+# direction is opposite to what dex3 expects).
+
+bounds:
+  left:
+    thumb:  { low: 0.0,   high: 0.1,  invert: false }
+    index:  { low: 0.135, high: 0.18, invert: true }
+    middle: { low: 0.135, high: 0.18, invert: true }
+  right:
+    thumb:  { low: 0.0,   high: 0.1,   invert: true }
+    index:  { low: 0.134, high: 0.178, invert: true }
+    middle: { low: 0.134, high: 0.175, invert: true }

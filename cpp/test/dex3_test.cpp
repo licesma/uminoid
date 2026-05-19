@@ -31,6 +31,9 @@
 #include <unitree/robot/channel/channel_subscriber.hpp>
 
 #include "manus/manus_reader.hpp"
+#include "utils/csv_saver.hpp"
+#include "utils/repo_constants.hpp"
+#include "utils/time.hpp"
 
 namespace {
 
@@ -419,6 +422,45 @@ int main(int argc, char** argv) {
         std::any_of(hands.begin(), hands.end(), [](const auto& h){ return h->mode != Mode::Read; });
     std::cout << ">>> " << (any_publish ? "Publishing" : "READ-ONLY (no cmd)") << ". Ctrl-C to quit.\n";
 
+    // ---- CSV logging (parallel to collect's dex3_hand.csv for diffing) ----
+    //
+    // Column layout follows firmware wire order to match collect's csv and
+    // Humanoid-Exo-Learning's Dex3 schema. Names are physical-joint-readable.
+    //   L wire order: thumb_rotation, thumb_palm_bend, thumb_tip_bend,
+    //                 middle_palm_bend, middle_tip_bend, index_palm_bend, index_tip_bend
+    //   R wire order: thumb_rotation, thumb_palm_bend, thumb_tip_bend,
+    //                 index_palm_bend, index_tip_bend, middle_palm_bend, middle_tip_bend
+    constexpr const char* kJointAtSlotL[7] = {
+        "thumb_rotation", "thumb_palm_bend", "thumb_tip_bend",
+        "middle_palm_bend", "middle_tip_bend",
+        "index_palm_bend", "index_tip_bend"};
+    constexpr const char* kJointAtSlotR[7] = {
+        "thumb_rotation", "thumb_palm_bend", "thumb_tip_bend",
+        "index_palm_bend", "index_tip_bend",
+        "middle_palm_bend", "middle_tip_bend"};
+
+    constexpr int kPressEntries        = 9;
+    constexpr int kPressValuesPerEntry = 12;
+
+    auto build_header = [&]() {
+        std::string s = "collection_id,host_timestamp";
+        for (auto [side_label, names] : std::initializer_list<std::pair<const char*, const char* const*>>{
+                {"L", kJointAtSlotL}, {"R", kJointAtSlotR}}) {
+            for (const char* signal : {"cmd", "actual", "force"})
+                for (int slot = 0; slot < kMotorCount; ++slot)
+                    s += std::string(",") + side_label + "_" + signal + "_" + names[slot];
+            for (int e = 0; e < kPressEntries; ++e)
+                for (int c = 0; c < kPressValuesPerEntry; ++c)
+                    s += std::string(",") + side_label + "_press_e"
+                         + std::to_string(e) + "_c" + std::to_string(c);
+        }
+        return s;
+    };
+
+    const std::string csv_dir = repo_constants::DATA_DIR + "/dex3_test";
+    std::filesystem::create_directories(csv_dir);
+    CsvSaver test_csv(csv_dir + "/dex3_hand.csv", build_header());
+
     // ---- Main loop ----
     const auto publish_period_ms = std::max(1, 1000 / publish_rate_hz);
     const auto publish_period = std::chrono::milliseconds(publish_period_ms);
@@ -430,6 +472,24 @@ int main(int argc, char** argv) {
     while (true) {
         for (auto& h : hands) if (h->mode == Mode::Drive) step_drive_ramp(*h, dt_s);
         for (auto& h : hands) if (h->cmd_pub) h->cmd_pub->Write(h->cmd);
+
+        // CSV row in firmware wire order (same shape as collect's dex3_hand.csv).
+        {
+            std::string line = "0," + std::to_string(Time::ts());
+            for (auto& h : hands) {
+                std::lock_guard<std::mutex> lock(h->state_mutex);
+                for (int slot = 0; slot < kMotorCount; ++slot)
+                    line += "," + std::to_string(h->current_cmd_q[slot]);
+                for (int slot = 0; slot < kMotorCount; ++slot)
+                    line += "," + std::to_string(h->state.motor_state()[slot].q());
+                for (int slot = 0; slot < kMotorCount; ++slot)
+                    line += "," + std::to_string(h->state.motor_state()[slot].tau_est());
+                for (int e = 0; e < kPressEntries; ++e)
+                    for (int c = 0; c < kPressValuesPerEntry; ++c)
+                        line += "," + std::to_string(h->state.press_sensor_state()[e].pressure()[c]);
+            }
+            test_csv.write_line(line);
+        }
 
         if (++tick % print_every == 0) {
             auto now = std::chrono::steady_clock::now();
