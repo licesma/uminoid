@@ -35,25 +35,25 @@ One JSON object per line, one line per camera frame. Built by
 `RobotDataWorker.get_robot_data` (`worker.py:429`) from the shared-memory
 snapshot of the robot state.
 
-| Field | Type | Size (G1) | Source / meaning |
-|---|---|---|---|
-| `time` | float | — | `time.time()` when the row is written |
-| `robot_type` | str | — | `"g1"` or `"h1"` |
-| `states.arm_state` | list[float] | **14** | Both-arm joint angles, encoder/SDK frame |
-| `states.leg_state` | list[float] | **15** | Both-leg joint angles + waist |
-| `states.hand_state` | list[float] | **14** | Dex3 hand joints (7 L + 7 R) |
-| `states.hand_pressure_state` | list[dict] | up to 18 sensors × ≤4 readings | Tactile, formatted by `format_pressure_data` |
-| `states.imu.quaternion` | list[float] | 4 | Body IMU |
-| `states.imu.accelerometer` | list[float] | 3 | Body IMU |
-| `states.imu.gyroscope` | list[float] | 3 | Body IMU |
-| `states.imu.rpy` | list[float] | 3 | Body IMU |
-| `states.odometry.position` | list[float] | 3 | Base odometry |
-| `states.odometry.velocity` | list[float] | 3 | Base odometry |
-| `states.odometry.rpy` | list[float] | 3 | Base odometry |
-| `states.odometry.quat` | list[float] | 4 | Base odometry |
-| `actions` | null | — | Placeholder — filled in by Stage 2 merger |
-| `image` | str | — | `"color/frame_NNNNNN.jpg"` (relative path) |
-| `depth` | str | — | `"depth/frame_NNNNNN.npy.lzma"` (relative path) |
+| Field | Type | Source / meaning |
+|---|---|---|
+| `time` | float | `time.time()` when the row is written |
+| `robot_type` | str | `"g1"` or `"h1"` |
+| `states.arm_state` | float[**14**] | Both-arm joint angles, encoder/SDK frame |
+| `states.leg_state` | float[**15**] | Both-leg joint angles + waist |
+| `states.hand_state` | float[**14**] | Dex3 hand joints (7 L + 7 R) |
+| `states.hand_pressure_state` | dict[18 sensors × ≤4 readings] | Tactile, formatted by `format_pressure_data` |
+| `states.imu.quaternion` | float[4] | Body IMU |
+| `states.imu.accelerometer` | float[3] | Body IMU |
+| `states.imu.gyroscope` | float[3] | Body IMU |
+| `states.imu.rpy` | float[3] | Body IMU |
+| `states.odometry.position` | float[3] | Base odometry |
+| `states.odometry.velocity` | float[3] | Base odometry |
+| `states.odometry.rpy` | float[3] | Base odometry |
+| `states.odometry.quat` | float[4] | Base odometry |
+| `actions` | null | Placeholder — filled in by Stage 2 merger |
+| `image` | str | `"color/frame_NNNNNN.jpg"` (relative path) |
+| `depth` | str | `"depth/frame_NNNNNN.npy.lzma"` (relative path) |
 
 Total raw float count in the shared-memory snapshot for G1:
 `15 + 14 + 14 + 4 + 3 + 3 + 3 + 3 + 3 + 3 + 4 + 216 = 285` doubles.
