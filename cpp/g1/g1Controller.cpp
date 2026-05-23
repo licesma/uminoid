@@ -8,13 +8,12 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
 
 namespace {
-
-constexpr uint16_t INVALID_EXO_READING = 5000;
 
 // Linear blend window applied to AMO actions right after handoff. At t=0 the
 // commanded targets equal initial_pose (the ramp endpoint), at t=duration they
@@ -28,20 +27,6 @@ constexpr double AMO_BLEND_DURATION_S = 1.5;
 // per-sample velocity clamp still runs on top, so a large operator-vs-parked
 // gap that exceeds the ramp's implied velocity is bounded by the clamp.
 constexpr double ARM_FOLLOW_RAMP_DURATION_S = 3.0;
-
-
-constexpr std::array<G1JointIndex, ARM_JOINT_COUNT> LEFT_ARM_JOINTS = {
-    G1JointIndex::LeftShoulderPitch, G1JointIndex::LeftShoulderRoll,
-    G1JointIndex::LeftShoulderYaw,   G1JointIndex::LeftElbow,
-    G1JointIndex::LeftWristRoll,     G1JointIndex::LeftWristPitch,
-    G1JointIndex::LeftWristYaw,
-};
-constexpr std::array<G1JointIndex, ARM_JOINT_COUNT> RIGHT_ARM_JOINTS = {
-    G1JointIndex::RightShoulderPitch, G1JointIndex::RightShoulderRoll,
-    G1JointIndex::RightShoulderYaw,   G1JointIndex::RightElbow,
-    G1JointIndex::RightWristRoll,     G1JointIndex::RightWristPitch,
-    G1JointIndex::RightWristYaw,
-};
 
 std::string csv_header() {
   std::string h = "collection_id,timestamp,host_timestamp";
@@ -71,15 +56,9 @@ MotorCommand make_motor_command(
   return motor_command;
 }
 
-G1JointReading invalidReading(G1JointIndex joint) {
-  return {joint, -1, false};
-}
-
 }  // namespace
 
 G1Controller::G1Controller(std::string networkInterface, bool isSimulation,
-                           const JointsReadingMetadata& metadata,
-                           const JointBounds& reader_bounds,
                            const std::string& recording_label,
                            bool left_enabled, bool right_enabled,
                            const std::function<void(const std::string&)>& raise_error)
@@ -91,54 +70,12 @@ G1Controller::G1Controller(std::string networkInterface, bool isSimulation,
       right_measured_csv_(right_enabled ? make_csv_saver(recording_label, "right_measured.csv") : CsvSaver{}),
       left_command_csv_(left_enabled ? make_csv_saver(recording_label, "left_command.csv") : CsvSaver{}),
       right_command_csv_(right_enabled ? make_csv_saver(recording_label, "right_command.csv") : CsvSaver{}),
-      metadata_(metadata),
-      bounds_(LoadBounds(G1_BOUNDS_PATH)),
-      reader_bounds_(reader_bounds),
+      left_arm_csv_(left_enabled ? make_csv_saver(recording_label, "left_arm.csv") : CsvSaver{}),
+      right_arm_csv_(right_enabled ? make_csv_saver(recording_label, "right_arm.csv") : CsvSaver{}),
       left_enabled_(left_enabled),
       right_enabled_(right_enabled),
       amo_bridge_([this](const AmoAction& action) { apply_amo_action(action); },
                   raise_error) {
-}
-
-ArmReadings G1Controller::decode_arm(const ArmLine& sample,
-                                     bool from_left) const {
-  const auto& joints = from_left ? LEFT_ARM_JOINTS : RIGHT_ARM_JOINTS;
-  ArmReadings readings{};
-  for (size_t i = 0; i < ARM_JOINT_COUNT; ++i) {
-    const G1JointIndex g1_idx = joints[i];
-    const auto [lower, upper] = reader_bounds_[g1_idx];
-    const int bit_value = sample.data[i];
-    const double value =
-        (bit_value - ENCODER_RESOLUTION / 2.0) * ENCODER_PRECISION_RAD;
-
-    if (bit_value == INVALID_EXO_READING) {
-      readings[i] = invalidReading(g1_idx);
-      continue;
-    }
-    if (circularDistance(upper, lower) < circularDistance(value, lower)) {
-      readings[i] = invalidReading(g1_idx);
-      continue;
-    }
-
-    const ReadingMetadata md = metadata_[g1_idx];
-    const double net_angle = md.skeleton_ref == LOWER_BOUND
-                                 ? circularDistance(value, lower)
-                                 : circularDistance(upper, value);
-    readings[i] = {g1_idx, net_angle, true};
-  }
-  return readings;
-}
-
-double G1Controller::toG1Angle(G1JointReading reading) {
-  auto [joint, netAngle, is_valid_] = reading;
-  auto [low, high] = bounds_[joint];
-  ReadingMetadata md = metadata_[joint];
-
-  double reference = md.g1_ref == LOWER_BOUND ? low : high;
-  double direction = md.g1_ref == LOWER_BOUND ? 1.0 : -1.0;
-
-  double value = reference + direction * netAngle;
-  return std::clamp(value, low, high);
 }
 
 void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
@@ -146,7 +83,8 @@ void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
                               int collection_id) {
   CsvSaver& measured = from_left ? left_measured_csv_ : right_measured_csv_;
   CsvSaver& cmd = from_left ? left_command_csv_ : right_command_csv_;
-  if (!measured || !cmd) return;
+  CsvSaver& arm = from_left ? left_arm_csv_ : right_arm_csv_;
+  if (!measured || !cmd || !arm) return;
 
   const auto& joints = from_left ? LEFT_ARM_JOINTS : RIGHT_ARM_JOINTS;
   const std::string prefix = std::to_string(collection_id) + "," +
@@ -154,17 +92,21 @@ void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
                              std::to_string(sample.host_timestamp);
   std::ostringstream measured_row;
   std::ostringstream command_row;
+  std::ostringstream arm_row;
   measured_row << prefix;
   command_row << prefix;
+  arm_row << prefix;
 
-  for (const auto joint : joints) {
-    const int idx = static_cast<int>(joint);
+  for (size_t i = 0; i < ARM_JOINT_COUNT; ++i) {
+    const int idx = static_cast<int>(joints[i]);
     measured_row << "," << state.q.at(idx);
     command_row << "," << command.q_target.at(idx);
+    arm_row << "," << sample.data[i];
   }
 
   measured.write_line(measured_row.str());
   cmd.write_line(command_row.str());
+  arm.write_line(arm_row.str());
 }
 
 bool G1Controller::initialize_targets_from_robot_state(
@@ -226,7 +168,9 @@ void G1Controller::process_arm_sample(const ArmLine& sample, bool from_left,
   const std::shared_ptr<const MotorState> ms = motor_state_buffer_.GetData();
   if (!ms) return;
 
-  const ArmReadings arm_readings = decode_arm(sample, from_left);
+  const std::array<double, ARM_JOINT_COUNT> angles =
+      converter_.convert(sample, from_left);
+  const auto& joints = from_left ? LEFT_ARM_JOINTS : RIGHT_ARM_JOINTS;
   const double max_step = max_target_velocity_ * control_dt_;
   const double t_since_handoff = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - arm_handoff_time_).count();
@@ -237,10 +181,10 @@ void G1Controller::process_arm_sample(const ArmLine& sample, bool from_left,
   MotorCommand motor_command_tmp = make_motor_command(commanded_targets_);
 
   mode_pr_ = Mode::PR;
-  for (const auto& reading : arm_readings) {
-    if (!reading.is_valid) continue;
-    const int joint_index = static_cast<int>(reading.joint);
-    const double desired_target = toG1Angle(reading);
+  for (size_t i = 0; i < ARM_JOINT_COUNT; ++i) {
+    if (std::isnan(angles[i])) continue;
+    const int joint_index = static_cast<int>(joints[i]);
+    const double desired_target = angles[i];
     const double tracking_target =
         ramp_alpha < 1.0
             ? (1.0 - ramp_alpha) * initial_pose[joint_index] +

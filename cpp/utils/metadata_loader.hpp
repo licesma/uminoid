@@ -28,7 +28,7 @@ struct JointsReadingMetadata {
   const ReadingMetadata& operator[](G1JointIndex idx) const { return correct_bound[idx]; }
 };
 
-/** Load per-joint metadata from a YAML file (e.g. as5600_bounds.yaml). */
+/** Load per-joint metadata from a YAML file (e.g. dynamixel_bounds.yaml). */
 inline JointsReadingMetadata LoadMetadata(const std::string& path) {
   try {
     YAML::Node config = YAML::LoadFile(path);

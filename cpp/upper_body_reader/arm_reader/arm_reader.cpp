@@ -19,14 +19,32 @@ std::string format_line(int collection_id, const ArmLine& line) {
   return s;
 }
 
+std::string format_command_line(int collection_id, const ArmLine& line,
+                                const ArmAngleConverter& converter,
+                                bool from_left) {
+  std::string s = std::to_string(collection_id) + "," +
+                  std::to_string(line.timestamp) + "," +
+                  std::to_string(line.host_timestamp);
+  for (const double a : converter.convert(line, from_left))
+    s += "," + std::to_string(a);
+  return s;
+}
+
 }  // namespace
 
 ArmReader::ArmReader(std::unique_ptr<SkeletonArm> arm,
                      const std::string& csv_path,
-                     const std::function<void(const std::string&)>& raise_error)
+                     const std::function<void(const std::string&)>& raise_error,
+                     const ArmAngleConverter* converter, bool from_left,
+                     const std::string& command_csv_path)
     : arm_(std::move(arm)),
       raise_error_(raise_error),
-      csv_(csv_path.empty() ? CsvSaver{} : CsvSaver(csv_path, csv_header())) {
+      csv_(csv_path.empty() ? CsvSaver{} : CsvSaver(csv_path, csv_header())),
+      command_csv_(command_csv_path.empty()
+                       ? CsvSaver{}
+                       : CsvSaver(command_csv_path, csv_header())),
+      converter_(converter),
+      from_left_(from_left) {
   if (!arm_) {
     stopped_ = true;
     return;
@@ -72,11 +90,16 @@ void ArmReader::collect_loop(const std::function<int()>&  collection_id,
   while (!stop()) {
     auto reading = wait_for_next();
     if (!reading) break;
-    if (!pause())
+    if (!pause()) {
       csv_.write_line(format_line(collection_id(), *reading));
+      if (converter_ && command_csv_)
+        command_csv_.write_line(format_command_line(
+            collection_id(), *reading, *converter_, from_left_));
+    }
   }
 
   csv_.close();
+  command_csv_.close();
 }
 
 void ArmReader::read_loop() {

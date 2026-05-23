@@ -8,12 +8,6 @@
 
 class ExoUpperBodyReader : public UpperBodyReader {
  public:
-  /** Construct with AS5600Arms (TCP relay). */
-  explicit ExoUpperBodyReader(
-      const std::string& relay_address, const std::string& recording_label = "",
-      bool left_enabled = true, bool right_enabled = true,
-      double default_value = 0.0);
-
   /** Construct with DynamixelArms (USB/U2D2). A side that is disabled (or has
    *  an empty device path) is skipped entirely -- no reader thread, no CSV. */
   ExoUpperBodyReader(
@@ -31,6 +25,10 @@ class ExoUpperBodyReader : public UpperBodyReader {
                     const std::function<bool()>& pause = [] { return false; })
       override;
 
+ private:
+  ArmAngleConverter converter_;
+
+ public:
   ArmReader left;
   ArmReader right;
 };

@@ -9,11 +9,6 @@
 
 class G1UpperBodyReader : public UpperBodyReader {
  public:
-  G1UpperBodyReader(std::string networkInterface,
-                      const std::string& relay_address, bool isSimulation,
-                      const std::string& recording_label,
-                      bool left_enabled, bool right_enabled,
-                      const std::function<void(const std::string&)>& raise_error);
   G1UpperBodyReader(
       std::string networkInterface, const std::string& left_device,
       const std::string& right_device, int baudrate, bool isSimulation,

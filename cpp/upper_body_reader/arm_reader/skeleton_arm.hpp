@@ -17,7 +17,7 @@ struct ArmLine {
 
 /**
  * Abstract interface for reading joint data from one arm.
- * Implementations: AS5600Arm (TCP relay), DynamixelArm (USB/U2D2).
+ * Implementation: DynamixelArm (USB/U2D2).
  */
 class SkeletonArm {
  public:

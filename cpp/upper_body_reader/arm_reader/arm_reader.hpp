@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arm_angle_converter.hpp"
 #include "skeleton_arm.hpp"
 #include "utils/csv_saver.hpp"
 
@@ -26,7 +27,10 @@ class ArmReader {
   /** Pass nullptr for an inactive arm. */
   explicit ArmReader(std::unique_ptr<SkeletonArm> arm = nullptr,
                      const std::string& csv_path = "",
-                     const std::function<void(const std::string&)>& raise_error = nullptr);
+                     const std::function<void(const std::string&)>& raise_error = nullptr,
+                     const ArmAngleConverter* converter = nullptr,
+                     bool from_left = true,
+                     const std::string& command_csv_path = "");
   ~ArmReader();
 
   ArmReader(const ArmReader&) = delete;
@@ -57,6 +61,9 @@ class ArmReader {
   std::unique_ptr<SkeletonArm> arm_;
   std::function<void(const std::string&)> raise_error_;
   CsvSaver csv_;
+  CsvSaver command_csv_;
+  const ArmAngleConverter* converter_ = nullptr;
+  bool from_left_ = true;
   std::thread thread_;
 
   mutable std::mutex mutex_;

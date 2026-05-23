@@ -1,6 +1,5 @@
 #include "g1_upper_body_reader.hpp"
 
-#include "arm_reader/as5600/as5600_arm.hpp"
 #include "arm_reader/dynamixel/dynamixel_arm.hpp"
 
 #include <stdexcept>
@@ -21,41 +20,13 @@ std::unique_ptr<DynamixelArm> make_dynamixel_arm(
 }
 }  // namespace
 
-#ifndef READER_BOUNDS_PATH
-#define READER_BOUNDS_PATH \
-  "../upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
-#endif
-
-#ifndef DYNAMIXEL_BOUNDS_PATH
-#define DYNAMIXEL_BOUNDS_PATH \
-  "../upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
-#endif
-
-G1UpperBodyReader::G1UpperBodyReader(
-    std::string networkInterface, const std::string& relay_address,
-    bool isSimulation, const std::string& recording_label,
-    bool left_enabled, bool right_enabled,
-    const std::function<void(const std::string&)>& raise_error)
-    : controller_(networkInterface, isSimulation,
-                  LoadMetadata(READER_BOUNDS_PATH),
-                  LoadBounds(READER_BOUNDS_PATH), recording_label,
-                  left_enabled, right_enabled, raise_error),
-      left_(left_enabled
-                ? std::make_unique<AS5600Arm>(relay_address, 0)
-                : nullptr),
-      right_(right_enabled
-                 ? std::make_unique<AS5600Arm>(relay_address, ARM_JOINT_COUNT)
-                 : nullptr) {}
-
 G1UpperBodyReader::G1UpperBodyReader(
     std::string networkInterface, const std::string& left_device,
     const std::string& right_device, int baudrate, bool isSimulation,
     const std::string& recording_label,
     bool left_enabled, bool right_enabled,
     const std::function<void(const std::string&)>& raise_error)
-    : controller_(networkInterface, isSimulation,
-                  LoadMetadata(DYNAMIXEL_BOUNDS_PATH),
-                  LoadBounds(DYNAMIXEL_BOUNDS_PATH), recording_label,
+    : controller_(networkInterface, isSimulation, recording_label,
                   left_enabled, right_enabled, raise_error),
       left_(make_dynamixel_arm(left_enabled, left_device, baudrate, "left",
                                raise_error),

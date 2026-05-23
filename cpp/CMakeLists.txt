@@ -49,14 +49,13 @@ add_library(
   upper_body_reader OBJECT
   upper_body_reader/exo_upper_body_reader.cpp
   upper_body_reader/arm_reader/arm_reader.cpp
-  upper_body_reader/arm_reader/as5600/as5600_arm.cpp
   upper_body_reader/arm_reader/dynamixel/dynamixel_arm.cpp
   utils/dynamixel_timestamp_helper.cpp
 )
 target_include_directories(upper_body_reader PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(upper_body_reader PUBLIC dynamixel_sdk)
+target_link_libraries(upper_body_reader PUBLIC dynamixel_sdk yaml-cpp)
 target_compile_definitions(upper_body_reader PRIVATE
-  AS5600_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
+  G1_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/g1/model/upperBodyJointBounds.yaml"
   DYNAMIXEL_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
 )
 
@@ -97,7 +96,6 @@ target_include_directories(g1 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(g1 PUBLIC unitree_sdk2 amo_bridge)
 target_compile_definitions(g1 PRIVATE
   G1_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/g1/model/upperBodyJointBounds.yaml"
-  READER_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
   DYNAMIXEL_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
 )
 
@@ -105,10 +103,6 @@ target_compile_definitions(g1 PRIVATE
 add_library(g1_upper_body_reader OBJECT upper_body_reader/g1_upper_body_reader.cpp)
 target_include_directories(g1_upper_body_reader PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(g1_upper_body_reader PUBLIC g1 upper_body_reader)
-target_compile_definitions(g1_upper_body_reader PRIVATE
-  READER_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
-  DYNAMIXEL_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
-)
 
 
 
@@ -144,7 +138,6 @@ foreach(test_source ${TEST_SOURCES})
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfx_inspire_service/include)
   target_link_libraries(${test_name} PRIVATE upper_body_reader manus_reader yaml-cpp)
   target_compile_definitions(${test_name} PRIVATE
-    AS5600_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
     DYNAMIXEL_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
   )
 endforeach()

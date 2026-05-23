@@ -1,6 +1,5 @@
 #include "exo_upper_body_reader.hpp"
 
-#include "arm_reader/as5600/as5600_arm.hpp"
 #include "arm_reader/dynamixel/dynamixel_arm.hpp"
 
 #include "../utils/repo_constants.hpp"
@@ -31,19 +30,6 @@ std::unique_ptr<DynamixelArm> make_dynamixel_arm(
 }
 }  // namespace
 
-ExoUpperBodyReader::ExoUpperBodyReader(const std::string& relay_address,
-                                       const std::string& recording_label,
-                                       bool left_enabled, bool right_enabled,
-                                       double default_value)
-    : left(left_enabled
-               ? std::make_unique<AS5600Arm>(relay_address, 0)
-               : nullptr,
-           arm_csv_path(recording_label, "left_arm.csv", left_enabled)),
-      right(right_enabled
-                ? std::make_unique<AS5600Arm>(relay_address, ARM_JOINT_COUNT)
-                : nullptr,
-            arm_csv_path(recording_label, "right_arm.csv", right_enabled)) {}
-
 ExoUpperBodyReader::ExoUpperBodyReader(
     const std::string& left_device, const std::string& right_device,
     int baudrate, const std::string& recording_label,
@@ -52,11 +38,13 @@ ExoUpperBodyReader::ExoUpperBodyReader(
     : left(make_dynamixel_arm(left_enabled, left_device, baudrate, "left",
                               raise_error),
            arm_csv_path(recording_label, "left_arm.csv", left_enabled),
-           raise_error),
+           raise_error, &converter_, true,
+           arm_csv_path(recording_label, "left_command.csv", left_enabled)),
       right(make_dynamixel_arm(right_enabled, right_device, baudrate, "right",
                                raise_error),
             arm_csv_path(recording_label, "right_arm.csv", right_enabled),
-            raise_error) {}
+            raise_error, &converter_, false,
+            arm_csv_path(recording_label, "right_command.csv", right_enabled)) {}
 
 void ExoUpperBodyReader::PrintRaw() const {
   const auto left_data = left.snapshot();
