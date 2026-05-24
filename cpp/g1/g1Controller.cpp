@@ -28,19 +28,13 @@ constexpr double AMO_BLEND_DURATION_S = 1.5;
 // gap that exceeds the ramp's implied velocity is bounded by the clamp.
 constexpr double ARM_FOLLOW_RAMP_DURATION_S = 3.0;
 
-std::string csv_header() {
-  std::string h = "collection_id,timestamp,host_timestamp";
-  for (size_t i = 0; i < ARM_JOINT_COUNT; ++i)
-    h += ",joint_" + std::to_string(i);
-  return h;
-}
-
 CsvSaver make_csv_saver(const std::string& recording_label,
-                        const std::string& filename) {
+                        const std::string& filename,
+                        const std::string& header) {
   if (recording_label.empty()) return CsvSaver{};
   const std::string dir = repo_constants::DATA_DIR + "/" + recording_label;
   std::filesystem::create_directories(dir);
-  return CsvSaver(dir + "/" + filename, csv_header());
+  return CsvSaver(dir + "/" + filename, header);
 }
 
 MotorCommand make_motor_command(
@@ -66,12 +60,12 @@ G1Controller::G1Controller(std::string networkInterface, bool isSimulation,
       control_dt_(0.002),
       max_target_velocity_(2.0),
       commanded_targets_{},
-      left_measured_csv_(left_enabled ? make_csv_saver(recording_label, "left_measured.csv") : CsvSaver{}),
-      right_measured_csv_(right_enabled ? make_csv_saver(recording_label, "right_measured.csv") : CsvSaver{}),
-      left_command_csv_(left_enabled ? make_csv_saver(recording_label, "left_command.csv") : CsvSaver{}),
-      right_command_csv_(right_enabled ? make_csv_saver(recording_label, "right_command.csv") : CsvSaver{}),
-      left_arm_csv_(left_enabled ? make_csv_saver(recording_label, "left_arm.csv") : CsvSaver{}),
-      right_arm_csv_(right_enabled ? make_csv_saver(recording_label, "right_arm.csv") : CsvSaver{}),
+      left_measured_csv_(left_enabled ? make_csv_saver(recording_label, "left_measured.csv", arm_csv_header(true)) : CsvSaver{}),
+      right_measured_csv_(right_enabled ? make_csv_saver(recording_label, "right_measured.csv", arm_csv_header(false)) : CsvSaver{}),
+      left_command_csv_(left_enabled ? make_csv_saver(recording_label, "left_command.csv", arm_csv_header(true)) : CsvSaver{}),
+      right_command_csv_(right_enabled ? make_csv_saver(recording_label, "right_command.csv", arm_csv_header(false)) : CsvSaver{}),
+      left_arm_csv_(left_enabled ? make_csv_saver(recording_label, "left_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
+      right_arm_csv_(right_enabled ? make_csv_saver(recording_label, "right_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
       left_enabled_(left_enabled),
       right_enabled_(right_enabled),
       amo_bridge_([this](const AmoAction& action) { apply_amo_action(action); },

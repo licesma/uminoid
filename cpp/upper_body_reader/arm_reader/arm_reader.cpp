@@ -4,13 +4,6 @@
 
 namespace {
 
-std::string csv_header() {
-  std::string h = "collection_id,timestamp,host_timestamp";
-  for (size_t i = 0; i < ARM_JOINT_COUNT; ++i)
-    h += ",joint_" + std::to_string(i);
-  return h;
-}
-
 std::string format_line(int collection_id, const ArmLine& line) {
   std::string s = std::to_string(collection_id) + "," +
                   std::to_string(line.timestamp) + "," +
@@ -39,10 +32,11 @@ ArmReader::ArmReader(std::unique_ptr<SkeletonArm> arm,
                      const std::string& command_csv_path)
     : arm_(std::move(arm)),
       raise_error_(raise_error),
-      csv_(csv_path.empty() ? CsvSaver{} : CsvSaver(csv_path, csv_header())),
+      csv_(csv_path.empty() ? CsvSaver{}
+                            : CsvSaver(csv_path, raw_arm_csv_header())),
       command_csv_(command_csv_path.empty()
                        ? CsvSaver{}
-                       : CsvSaver(command_csv_path, csv_header())),
+                       : CsvSaver(command_csv_path, arm_csv_header(from_left))),
       converter_(converter),
       from_left_(from_left) {
   if (!arm_) {
