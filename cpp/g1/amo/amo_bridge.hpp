@@ -5,7 +5,7 @@
 //   state  : C++ PUB (bind)    -> Python SUB (connect)   tcp://127.0.0.1:5555
 //   action : C++ SUB (connect) <- Python PUB (bind)      tcp://127.0.0.1:5556
 //
-// Wire format must match py/amo_sidecar/wire_protocol.py byte-for-byte.
+// Wire format must match py/collect/amo_sidecar/wire_protocol.py byte-for-byte.
 
 #include "g1/model/g1Enums.hpp"
 #include "g1/model/g1Structs.hpp"

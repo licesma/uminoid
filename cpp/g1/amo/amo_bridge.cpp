@@ -8,7 +8,7 @@
 
 namespace {
 
-// Wire format (must match py/amo_sidecar/wire_protocol.py):
+// Wire format (must match py/collect/amo_sidecar/wire_protocol.py):
 //   state  : uint64 seq, uint64 ts_ns,
 //            float64 q[23], dq[23], quat[4], ang_vel[3], cmds[7]
 //   action : uint64 seq, uint64 ts_ns, float64 q_target[15]

@@ -21,11 +21,14 @@
 #include <yaml-cpp/yaml.h>
 
 namespace config {
-    static const std::string PATH = (std::filesystem::path(__FILE__).parent_path() / "collect_config.yaml").lexically_normal().string();
+    // Runtime configuration lives in <repo>/config, a sibling of cpp/.
+    static const std::filesystem::path CONFIG_DIR =
+        (std::filesystem::path(__FILE__).parent_path() / ".." / "config").lexically_normal();
+    static const std::string PATH = (CONFIG_DIR / "collect.yaml").string();
     static const YAML::Node yaml = YAML::LoadFile(PATH);
 
     // Per-machine device identifiers (serial ports, hand ids) live separately.
-    static const std::string DEVICES_PATH = (std::filesystem::path(__FILE__).parent_path() / "devices_config.yaml").lexically_normal().string();
+    static const std::string DEVICES_PATH = (CONFIG_DIR / "devices.yaml").string();
     static const YAML::Node devices = YAML::LoadFile(DEVICES_PATH);
 
     inline const bool upper_body_enabled = yaml["upper_body"]["enabled"].as<bool>();

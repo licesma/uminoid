@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from joints import ARM_JOINTS
+from utils.joints import ARM_JOINTS
 
 from helpers.error_check import ensure
 from processor.components.mode import Mode

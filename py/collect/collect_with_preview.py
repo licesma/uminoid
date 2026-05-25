@@ -21,7 +21,7 @@ import threading
 import tty
 import urllib.request
 
-REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COLLECT_BIN = os.path.join(REPO_ROOT, "cpp", "build", "collect")
 STREAM_URL  = "http://127.0.0.1:8080/stream.mjpg"
 IMU_URL     = "http://127.0.0.1:8080/imu"

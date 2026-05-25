@@ -5,8 +5,8 @@ writing a udev rule matched on the FTDI chip's per-unit serial number.
 
 Must be run as root (sudo).
 
-    sudo python setup_arm_udev.py left_arm FT94EJO0
-    sudo python setup_arm_udev.py right_arm FT94EJNU
+    sudo python setup_dynamixel_udev.py left_arm FT94EJO0
+    sudo python setup_dynamixel_udev.py right_arm FT94EJNU
 """
 import argparse
 import os
@@ -50,7 +50,7 @@ def load_rules() -> dict[str, str]:
 def write_rules(rules: dict[str, str]) -> None:
     header = (
         "# Stable /dev symlinks for the Dynamixel U2D2 adapters.\n"
-        "# Managed by setup_arm_udev.py — matched by FTDI per-unit serial number.\n"
+        "# Managed by setup_dynamixel_udev.py — matched by FTDI per-unit serial number.\n"
     )
     lines = [make_rule(name, serial) for name, serial in sorted(rules.items())]
     with open(RULES_FILE, "w") as f:

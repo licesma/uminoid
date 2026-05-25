@@ -1,38 +1,32 @@
 relay: "127.0.0.1:5000"
 # The DDS network interface is derived from this: "lo" when true, the wired NIC
 # when false (see collect.cpp). It is not configured separately.
-is_simulation: false
+is_simulation: true
 
 dynamics:
-  model: "baseline"   # "baseline" | "psi0"
+  model: "psi0"   # "baseline" | "psi0"
 
 upper_body:
   enabled: true
-  source: "g1"   # "exo" = record exoskeleton arms, "g1" = teleoperate G1 and record robot joints
+  source: "g1"   # "mocap" | "g1" 
   left_enabled:  false
   right_enabled: true
   baudrate: 1000000
 
 hand:
-  enabled: true
-  source: "dex3"   # "inspire_usb" = direct serial to inspire hands;
-                         # "inspire_g1"  = inspire via G1 DDS bridge (inspire_g1);
-                         # "dex3"        = Unitree Dex3-1 via G1 DDS.
+  enabled: false
+  source: "dex3"   # "inspire_usb" | "inspire_g1" | "dex3"   
   left:
     enabled: true
   right:
     enabled: true
 
 camera:
-  enabled: true
-  source: "zmq"   # "usb" = local RealSense (UsbCameraRecorder); "zmq" = G1 head camera via realsense_raw_rgb.py (ZmqCameraRecorder)
+  enabled: false
+  source: "zmq"   # "zmq" |  "usb" 
 
-# Optional view-only MJPEG preview of the RealSense RGB stream. Intended to be
-# reached over Tailscale from another machine. Leave bind_host empty (or omit
-# the whole block) to disable. Recommended: set bind_host to this host's
-# tailscale0 IP so the stream is only reachable from the tailnet.
 preview:
-  bind_host: "127.0.0.1"           # loopback: only the local tmux mpv pane consumes it
+  bind_host: "127.0.0.1"           
   port: 8080
   width: 320
   height: 240

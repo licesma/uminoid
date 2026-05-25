@@ -6,12 +6,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from joints import ARM_JOINTS
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # put py/ on sys.path
+
+from utils.joints import ARM_JOINTS
 
 try:
     from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
 except ImportError:
-    sdk_path = Path(__file__).resolve().parent / "third_party" / "DynamixelSDK" / "python" / "src"
+    sdk_path = Path(__file__).resolve().parents[2] / "third_party" / "DynamixelSDK" / "python" / "src"
     sys.path.insert(0, str(sdk_path))
     from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
 

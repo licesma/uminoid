@@ -44,7 +44,7 @@ CONTROL_DT = 1.0 / CONTROL_HZ
 def parse_args():
     p = argparse.ArgumentParser()
     here = Path(__file__).resolve().parent
-    amo_dir = here.parent.parent / "third_party" / "AMO"
+    amo_dir = here.parent.parent.parent / "third_party" / "AMO"
     p.add_argument("--policy", default=str(amo_dir / "amo_jit.pt"))
     p.add_argument("--adapter", default=str(amo_dir / "adapter_jit.pt"))
     p.add_argument("--norm-stats", default=str(amo_dir / "adapter_norm_stats.pt"))
