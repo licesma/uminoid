@@ -24,14 +24,18 @@ namespace config {
     static const std::string PATH = (std::filesystem::path(__FILE__).parent_path() / "collect_config.yaml").lexically_normal().string();
     static const YAML::Node yaml = YAML::LoadFile(PATH);
 
+    // Per-machine device identifiers (serial ports, hand ids) live separately.
+    static const std::string DEVICES_PATH = (std::filesystem::path(__FILE__).parent_path() / "devices_config.yaml").lexically_normal().string();
+    static const YAML::Node devices = YAML::LoadFile(DEVICES_PATH);
+
     inline const bool upper_body_enabled = yaml["upper_body"]["enabled"].as<bool>();
     inline const bool hand_enabled       = yaml["hand"]["enabled"].as<bool>();
     inline const bool camera_enabled     = yaml["camera"]["enabled"].as<bool>();
     inline const std::string upper_body_source = yaml["upper_body"]["source"] ? yaml["upper_body"]["source"].as<std::string>() : std::string("exo");
     inline const std::string camera_source = yaml["camera"]["source"] ? yaml["camera"]["source"].as<std::string>() : std::string("usb");
 
-    inline const std::string left_arm   = yaml["upper_body"]["left_device"].as<std::string>();
-    inline const std::string right_arm  = yaml["upper_body"]["right_device"].as<std::string>();
+    inline const std::string left_arm   = devices["arms"]["left"].as<std::string>();
+    inline const std::string right_arm  = devices["arms"]["right"].as<std::string>();
     inline const bool        upper_body_left_enabled  =
         yaml["upper_body"]["left_enabled"]
             ? yaml["upper_body"]["left_enabled"].as<bool>()
@@ -41,11 +45,16 @@ namespace config {
             ? yaml["upper_body"]["right_enabled"].as<bool>()
             : true;
     inline const int         baudrate   = yaml["upper_body"]["baudrate"].as<int>();
-    inline const std::string network_interface =
-        yaml["upper_body"]["network_interface"]
-            ? yaml["upper_body"]["network_interface"].as<std::string>()
-            : std::string("");
     inline const bool is_simulation = yaml["is_simulation"].as<bool>();
+
+    // The DDS network interface is fully determined by simulation mode: the
+    // simulator publishes on loopback, the real robot on its wired NIC. Shared
+    // by the G1 body (upper_body source "g1") and the hands (DDS sources), so
+    // it is derived here rather than duplicated in the config.
+    inline constexpr const char* SIM_NETWORK_INTERFACE  = "lo";
+    inline constexpr const char* REAL_NETWORK_INTERFACE = "enx00e04c6803fc";
+    inline const std::string network_interface =
+        is_simulation ? SIM_NETWORK_INTERFACE : REAL_NETWORK_INTERFACE;
 
     inline const DynamicsModel dynamics_model = parse_dynamics_model(
         yaml["dynamics"] && yaml["dynamics"]["model"]
@@ -54,16 +63,12 @@ namespace config {
 
     inline const std::string hand_source =
         yaml["hand"]["source"] ? yaml["hand"]["source"].as<std::string>() : std::string("inspire_usb");
-    inline const std::string hand_network_interface =
-        yaml["hand"]["network_interface"]
-            ? yaml["hand"]["network_interface"].as<std::string>()
-            : std::string("");
     inline const bool    hand_left_enabled  = yaml["hand"]["left"]["enabled"].as<bool>();
     inline const bool    hand_right_enabled = yaml["hand"]["right"]["enabled"].as<bool>();
-    inline const uint8_t hand_left_id       = yaml["hand"]["left"]["id"]
-        ? yaml["hand"]["left"]["id"].as<int>()  : 0;
-    inline const uint8_t hand_right_id      = yaml["hand"]["right"]["id"]
-        ? yaml["hand"]["right"]["id"].as<int>() : 0;
+    inline const uint8_t hand_left_id       = devices["hands"]["left_id"]
+        ? devices["hands"]["left_id"].as<int>()  : 0;
+    inline const uint8_t hand_right_id      = devices["hands"]["right_id"]
+        ? devices["hands"]["right_id"].as<int>() : 0;
 
     // Preview is optional; an empty/missing bind_host disables it entirely.
     inline PreviewServer::Config load_preview_cfg() {
@@ -146,13 +151,13 @@ int main() {
             hand = std::make_unique<G1InspireRetargeter>(
                 config::hand_left_enabled,
                 config::hand_right_enabled,
-                config::hand_network_interface,
+                config::network_interface,
                 recording_label, raise_error);
         } else if (config::hand_source == "dex3") {
             hand = std::make_unique<Dex3Retargeter>(
                 config::hand_left_enabled,
                 config::hand_right_enabled,
-                config::hand_network_interface,
+                config::network_interface,
                 recording_label, raise_error);
         } else if (config::hand_source == "inspire_usb") {
             hand = std::make_unique<UsbInspireRetargeter>(

@@ -1,4 +1,6 @@
 relay: "127.0.0.1:5000"
+# The DDS network interface is derived from this: "lo" when true, the wired NIC
+# when false (see collect.cpp). It is not configured separately.
 is_simulation: false
 
 dynamics:
@@ -7,25 +9,19 @@ dynamics:
 upper_body:
   enabled: true
   source: "g1"   # "exo" = record exoskeleton arms, "g1" = teleoperate G1 and record robot joints
-  left_device:  "/dev/left_arm"
-  right_device: "/dev/right_arm"
   left_enabled:  false
   right_enabled: true
   baudrate: 1000000
-  network_interface: "enx00e04c6803fc"   # used when source == "g1" "enx00e04c6803fc"
 
 hand:
   enabled: true
   source: "dex3"   # "inspire_usb" = direct serial to inspire hands;
                          # "inspire_g1"  = inspire via G1 DDS bridge (inspire_g1);
                          # "dex3"        = Unitree Dex3-1 via G1 DDS.
-  network_interface: "enx00e04c6803fc"  # used when source uses DDS (inspire_g1, dex3)
   left:
     enabled: true
-    id: 1                # only used when source == "inspire_usb"
   right:
     enabled: true
-    id: 2                # only used when source == "inspire_usb"
 
 camera:
   enabled: true
