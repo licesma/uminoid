@@ -47,6 +47,11 @@ namespace config {
             : std::string("");
     inline const bool is_simulation = yaml["is_simulation"].as<bool>();
 
+    inline const DynamicsModel dynamics_model = parse_dynamics_model(
+        yaml["dynamics"] && yaml["dynamics"]["model"]
+            ? yaml["dynamics"]["model"].as<std::string>()
+            : std::string("baseline"));
+
     inline const std::string hand_source =
         yaml["hand"]["source"] ? yaml["hand"]["source"].as<std::string>() : std::string("inspire_usb");
     inline const std::string hand_network_interface =
@@ -116,12 +121,17 @@ int main() {
 
     if (config::upper_body_enabled) {
         if (config::upper_body_source == "g1") {
-            upper_body = std::make_unique<G1UpperBodyReader>(
-                config::network_interface, config::left_arm, config::right_arm,
-                config::baudrate, config::is_simulation, recording_label,
-                config::upper_body_left_enabled,
-                config::upper_body_right_enabled,
-                raise_error);
+            G1UpperBodyReaderConfig g1_config{};
+            g1_config.controller.network_interface = config::network_interface;
+            g1_config.controller.is_simulation = config::is_simulation;
+            g1_config.controller.recording_label = recording_label;
+            g1_config.controller.left_enabled = config::upper_body_left_enabled;
+            g1_config.controller.right_enabled = config::upper_body_right_enabled;
+            g1_config.controller.dynamics_model = config::dynamics_model;
+            g1_config.left_device = config::left_arm;
+            g1_config.right_device = config::right_arm;
+            g1_config.baudrate = config::baudrate;
+            upper_body = std::make_unique<G1UpperBodyReader>(g1_config, raise_error);
         } else {
             upper_body = std::make_unique<ExoUpperBodyReader>(
                 config::left_arm, config::right_arm, config::baudrate,

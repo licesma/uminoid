@@ -1,18 +1,21 @@
 relay: "127.0.0.1:5000"
 is_simulation: false
 
+dynamics:
+  model: "baseline"   # "baseline" | "psi0"
+
 upper_body:
-  enabled: false
+  enabled: true
   source: "g1"   # "exo" = record exoskeleton arms, "g1" = teleoperate G1 and record robot joints
-  left_device:  "/dev/right_arm"
-  right_device: "/dev/left_arm"
+  left_device:  "/dev/left_arm"
+  right_device: "/dev/right_arm"
   left_enabled:  false
   right_enabled: true
   baudrate: 1000000
   network_interface: "enx00e04c6803fc"   # used when source == "g1" "enx00e04c6803fc"
 
 hand:
-  enabled: false
+  enabled: true
   source: "dex3"   # "inspire_usb" = direct serial to inspire hands;
                          # "inspire_g1"  = inspire via G1 DDS bridge (inspire_g1);
                          # "dex3"        = Unitree Dex3-1 via G1 DDS.

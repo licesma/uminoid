@@ -37,39 +37,41 @@ CsvSaver make_csv_saver(const std::string& recording_label,
   return CsvSaver(dir + "/" + filename, header);
 }
 
-MotorCommand make_motor_command(
-    const std::array<double, G1_NUM_MOTOR>& commanded_targets) {
-  MotorCommand motor_command;
-  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-    motor_command.tau_ff.at(i) = 0.0;
-    motor_command.q_target.at(i) = commanded_targets.at(i);
-    motor_command.dq_target.at(i) = 0.0;
-    motor_command.kp.at(i) = stiffness[i];
-    motor_command.kd.at(i) = damping[i];
-  }
-  return motor_command;
-}
-
 }  // namespace
 
-G1Controller::G1Controller(std::string networkInterface, bool isSimulation,
-                           const std::string& recording_label,
-                           bool left_enabled, bool right_enabled,
+G1Controller::G1Controller(const G1ControllerConfig& config,
                            const std::function<void(const std::string&)>& raise_error)
-    : G1Robot(networkInterface, isSimulation),
+    : G1Robot(config.network_interface, config.is_simulation),
       control_dt_(0.002),
       max_target_velocity_(2.0),
       commanded_targets_{},
-      left_measured_csv_(left_enabled ? make_csv_saver(recording_label, "left_measured.csv", arm_csv_header(true)) : CsvSaver{}),
-      right_measured_csv_(right_enabled ? make_csv_saver(recording_label, "right_measured.csv", arm_csv_header(false)) : CsvSaver{}),
-      left_command_csv_(left_enabled ? make_csv_saver(recording_label, "left_command.csv", arm_csv_header(true)) : CsvSaver{}),
-      right_command_csv_(right_enabled ? make_csv_saver(recording_label, "right_command.csv", arm_csv_header(false)) : CsvSaver{}),
-      left_arm_csv_(left_enabled ? make_csv_saver(recording_label, "left_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
-      right_arm_csv_(right_enabled ? make_csv_saver(recording_label, "right_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
-      left_enabled_(left_enabled),
-      right_enabled_(right_enabled),
+      left_measured_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_measured.csv", arm_csv_header(true)) : CsvSaver{}),
+      right_measured_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_measured.csv", arm_csv_header(false)) : CsvSaver{}),
+      left_command_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_command.csv", arm_csv_header(true)) : CsvSaver{}),
+      right_command_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_command.csv", arm_csv_header(false)) : CsvSaver{}),
+      left_arm_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
+      right_arm_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
+      left_enabled_(config.left_enabled),
+      right_enabled_(config.right_enabled),
+      dynamics_(config.dynamics_model),
       amo_bridge_([this](const AmoAction& action) { apply_amo_action(action); },
                   raise_error) {
+}
+
+MotorCommand G1Controller::make_motor_command(
+    const std::array<double, G1_NUM_MOTOR>& commanded_targets) const {
+  const std::array<float, G1_NUM_MOTOR> tau_ff = dynamics_.getFFTau(commanded_targets);
+  const std::array<float, G1_NUM_MOTOR>& kp = dynamics_.getStiffness();
+  const std::array<float, G1_NUM_MOTOR>& kd = dynamics_.getDamping();
+  MotorCommand motor_command;
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    motor_command.tau_ff.at(i) = tau_ff[i];
+    motor_command.q_target.at(i) = commanded_targets.at(i);
+    motor_command.dq_target.at(i) = 0.0;
+    motor_command.kp.at(i) = kp[i];
+    motor_command.kd.at(i) = kd[i];
+  }
+  return motor_command;
 }
 
 void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,

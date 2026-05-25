@@ -21,17 +21,14 @@ std::unique_ptr<DynamixelArm> make_dynamixel_arm(
 }  // namespace
 
 G1UpperBodyReader::G1UpperBodyReader(
-    std::string networkInterface, const std::string& left_device,
-    const std::string& right_device, int baudrate, bool isSimulation,
-    const std::string& recording_label,
-    bool left_enabled, bool right_enabled,
+    const G1UpperBodyReaderConfig& config,
     const std::function<void(const std::string&)>& raise_error)
-    : controller_(networkInterface, isSimulation, recording_label,
-                  left_enabled, right_enabled, raise_error),
-      left_(make_dynamixel_arm(left_enabled, left_device, baudrate, "left",
-                               raise_error),
+    : controller_(config.controller, raise_error),
+      left_(make_dynamixel_arm(config.controller.left_enabled, config.left_device,
+                               config.baudrate, "left", raise_error),
             "", raise_error),
-      right_(make_dynamixel_arm(right_enabled, right_device, baudrate, "right",
+      right_(make_dynamixel_arm(config.controller.right_enabled,
+                                config.right_device, config.baudrate, "right",
                                 raise_error),
              "", raise_error) {}
 

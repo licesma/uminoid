@@ -31,6 +31,19 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DynamixelSDK/c++ dyn
 # DFX Inspire Hand Service
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfx_inspire_service dfx_inspire_service)
 
+# Pinocchio (rigid-body dynamics). Only RNEA + URDF parsing are used, so the
+# Python interface, collision support, tests, benchmarks, and utils are all
+# disabled to keep the build light. Requires liburdfdom-dev (apt) for URDF
+# support. The build-tree RPATH lets executables find libpinocchio at runtime
+# without any LD_LIBRARY_PATH setup.
+set(BUILD_PYTHON_INTERFACE       OFF CACHE BOOL "" FORCE)
+set(BUILD_WITH_COLLISION_SUPPORT OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING                OFF CACHE BOOL "" FORCE)
+set(BUILD_BENCHMARK              OFF CACHE BOOL "" FORCE)
+set(BUILD_UTILS                  OFF CACHE BOOL "" FORCE)
+set(BUILD_WITH_URDF_SUPPORT      ON  CACHE BOOL "" FORCE)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/pinocchio pinocchio)
+
 
 
 ######################################################################################################
@@ -89,11 +102,20 @@ add_library(amo_bridge OBJECT g1/amo/amo_bridge.cpp g1/amo/amo_zmq_helper.cpp)
 target_include_directories(amo_bridge PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${ZMQ_INCLUDE_DIRS})
 target_link_libraries(amo_bridge PUBLIC ${ZMQ_LIBRARIES} unitree_sdk2 pthread)
 
+# dynamics: per-mode joint dynamics (PD gains + feed-forward torque). Psi-0
+# mode uses Pinocchio's RNEA on a reduced (arms-only) model loaded from the
+# Psi-0 G1 URDF.
+add_library(dynamics OBJECT g1/dynamics/dynamics.cpp)
+target_include_directories(dynamics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(dynamics PUBLIC pinocchio::pinocchio)
+target_compile_definitions(dynamics PRIVATE
+  G1_URDF_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../third_party/Psi0/real/assets/g1/g1_body29_hand14.urdf")
+
 # g1 robot + controller. Links against amo_bridge because G1Controller owns
 # an AmoBridge member and calls publish_state / latest_action.
 add_library(g1 OBJECT g1/g1Robot.cpp g1/g1Controller.cpp)
 target_include_directories(g1 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(g1 PUBLIC unitree_sdk2 amo_bridge)
+target_link_libraries(g1 PUBLIC unitree_sdk2 amo_bridge dynamics)
 target_compile_definitions(g1 PRIVATE
   G1_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/g1/model/upperBodyJointBounds.yaml"
   DYNAMIXEL_BOUNDS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
@@ -113,15 +135,7 @@ target_link_libraries(g1_upper_body_reader PUBLIC g1 upper_body_reader)
 
 add_executable(collect collect.cpp)
 target_include_directories(collect PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 amo_bridge hand_retargeter inspire_retargeter dex3_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
-
-add_executable(teleoperate teleoperate.cpp)
-target_include_directories(teleoperate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(teleoperate PRIVATE g1_upper_body_reader g1 amo_bridge upper_body_reader yaml-cpp)
-
-target_compile_definitions(teleoperate PRIVATE
-  CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config.yaml"
-)
+target_link_libraries(collect PRIVATE upper_body_reader g1_upper_body_reader g1 amo_bridge dynamics hand_retargeter inspire_retargeter dex3_retargeter manus_reader usb_camera_recorder zmq_camera_recorder preview_server yaml-cpp)
 
 
 file(GLOB TEST_SOURCES test/*.cpp)

@@ -97,6 +97,51 @@ inline constexpr std::array<float, G1_NUM_MOTOR> damping = []() {
 }();
 
 // -----------------------------------------------------------------------------
+// Psi-0 gains
+// -----------------------------------------------------------------------------
+inline constexpr std::array<float, G1_NUM_MOTOR> psi0_stiffness = []() {
+    std::array<float, G1_NUM_MOTOR> s = stiffness;  // legs + waist unchanged
+    // -- left arm + wrist --
+    s[LeftShoulderPitch] = 50.0f;
+    s[LeftShoulderRoll]  = 50.0f;
+    s[LeftShoulderYaw]   = 50.0f;
+    s[LeftElbow]         = 50.0f;
+    s[LeftWristRoll]     = 30.0f;
+    s[LeftWristPitch]    = 30.0f;
+    s[LeftWristYaw]      = 30.0f;
+    // -- right arm + wrist --
+    s[RightShoulderPitch] = 50.0f;
+    s[RightShoulderRoll]  = 50.0f;
+    s[RightShoulderYaw]   = 50.0f;
+    s[RightElbow]         = 50.0f;
+    s[RightWristRoll]     = 30.0f;
+    s[RightWristPitch]    = 30.0f;
+    s[RightWristYaw]      = 30.0f;
+    return s;
+}();
+
+inline constexpr std::array<float, G1_NUM_MOTOR> psi0_damping = []() {
+    std::array<float, G1_NUM_MOTOR> d = damping;  // legs + waist unchanged
+    // -- left arm + wrist --
+    d[LeftShoulderPitch] = 7.5f;
+    d[LeftShoulderRoll]  = 7.5f;
+    d[LeftShoulderYaw]   = 7.5f;
+    d[LeftElbow]         = 7.5f;
+    d[LeftWristRoll]     = 6.0f;
+    d[LeftWristPitch]    = 6.0f;
+    d[LeftWristYaw]      = 6.0f;
+    // -- right arm + wrist --
+    d[RightShoulderPitch] = 7.5f;
+    d[RightShoulderRoll]  = 7.5f;
+    d[RightShoulderYaw]   = 7.5f;
+    d[RightElbow]         = 7.5f;
+    d[RightWristRoll]     = 6.0f;
+    d[RightWristPitch]    = 6.0f;
+    d[RightWristYaw]      = 6.0f;
+    return d;
+}();
+
+// -----------------------------------------------------------------------------
 // Initial pose
 // -----------------------------------------------------------------------------
 //

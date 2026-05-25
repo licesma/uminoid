@@ -7,13 +7,17 @@
 #include "arm_reader/arm_reader.hpp"
 #include "upper_body_reader.hpp"
 
+struct G1UpperBodyReaderConfig {
+  G1ControllerConfig controller;
+  std::string left_device;
+  std::string right_device;
+  int baudrate = 0;
+};
+
 class G1UpperBodyReader : public UpperBodyReader {
  public:
   G1UpperBodyReader(
-      std::string networkInterface, const std::string& left_device,
-      const std::string& right_device, int baudrate, bool isSimulation,
-      const std::string& recording_label,
-      bool left_enabled, bool right_enabled,
+      const G1UpperBodyReaderConfig& config,
       const std::function<void(const std::string&)>& raise_error);
   ~G1UpperBodyReader() override = default;
 

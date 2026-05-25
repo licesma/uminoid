@@ -13,12 +13,22 @@
 #include "upper_body_reader/arm_reader/skeleton_arm.hpp"
 #include "upper_body_reader/constants.hpp"
 #include "amo/amo_bridge.hpp"
+#include "dynamics/dynamics.hpp"
 #include "g1Robot.hpp"
 
 #ifndef DYNAMIXEL_BOUNDS_PATH
 #define DYNAMIXEL_BOUNDS_PATH \
   "../upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
 #endif
+
+struct G1ControllerConfig {
+  std::string network_interface;
+  bool is_simulation = false;
+  std::string recording_label;  // empty disables CSV recording
+  bool left_enabled = false;
+  bool right_enabled = false;
+  DynamicsModel dynamics_model = DynamicsModel::Baseline;
+};
 
 class G1Controller : public G1Robot {
  private:
@@ -35,6 +45,12 @@ class G1Controller : public G1Robot {
   ArmAngleConverter converter_;
   bool left_enabled_;
   bool right_enabled_;
+  Dynamics dynamics_;
+
+  // Builds a MotorCommand from the given per-joint targets, filling kp/kd and
+  // the feed-forward torque from the active dynamics model.
+  MotorCommand make_motor_command(
+      const std::array<double, G1_NUM_MOTOR>& commanded_targets) const;
 
   // AMO sidecar plumbing.
   AmoBridge  amo_bridge_;
@@ -72,9 +88,7 @@ class G1Controller : public G1Robot {
   void on_state_update() override;
 
  public:
-  G1Controller(std::string networkInterface, bool isSimulation,
-               const std::string& recording_label,
-               bool left_enabled, bool right_enabled,
+  G1Controller(const G1ControllerConfig& config,
                const std::function<void(const std::string&)>& raise_error);
   ~G1Controller() override = default;
 
