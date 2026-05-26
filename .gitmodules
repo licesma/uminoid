@@ -19,3 +19,6 @@
 [submodule "third_party/pinocchio"]
 	path = third_party/pinocchio
 	url = https://github.com/stack-of-tasks/pinocchio
+[submodule "third_party/manus_streamer"]
+	path = third_party/manus_streamer
+	url = git@github.com:licesma/manus_streamer.git
