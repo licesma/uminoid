@@ -3,24 +3,32 @@ from pathlib import Path
 
 import pandas as pd
 
-from paths import DATA_DIR, FINAL_DATA_DIR
+from paths import DATA_DIR, FINAL_DATA_DIR, TRAINING_DATA_DIR
 from processor.components.status import load_completed_collections
 from processor.components.arm import load_arms
 from processor.components.hand import load_hand
 from processor.components.camera import load_camera
 from processor.components.mode import Mode
 from processor.components.frame import compress_frames, OUTPUT_DIR
+from processor.components.columns import (
+    META_COLS,
+    validate_collection_ids,
+    validate_columns,
+    validate_frames_exist,
+)
+from processor.lerobot.lerobot import convert_to_lerobot
 
 DATA_CSV = "data.csv"
 FRAMES_SUBDIR = "frames"
 KEYS = ["collection_id", "host_timestamp"]
-META_COLS = ["collection_id", "frame", "host_timestamp"]
 
 
 class Postprocessor:
-    def __init__(self, episode_name: str, mode: Mode):
+    def __init__(self, episode_name: str, mode: Mode, instruction: str, save_final: bool = False):
         self.episode_path: Path = DATA_DIR / episode_name
         self.mode: Mode = mode
+        self.instruction: str = instruction
+        self.save_final: bool = save_final
         self.status_df: pd.DataFrame = load_completed_collections(self.episode_path)
 
     def run(self) -> None:
@@ -30,11 +38,23 @@ class Postprocessor:
         camera = load_camera(self.episode_path, self.status_df)
 
         merged = self._merge(camera, left_arm, right_arm, hand)
+        validate_columns(merged)
+        validate_collection_ids(merged)
+        validate_frames_exist(merged, self.episode_path / OUTPUT_DIR)
         out = self.episode_path / DATA_CSV
         merged.to_csv(out, index=False)
         print(f"Wrote {len(merged)} rows -> {out}")
 
-        self._save_final(merged)
+        convert_to_lerobot(
+            merged,
+            self.episode_path / OUTPUT_DIR,
+            TRAINING_DATA_DIR / self.episode_path.name,
+            self.instruction,
+        )
+        print(f"Wrote LeRobot dataset -> {TRAINING_DATA_DIR / self.episode_path.name}")
+
+        if self.save_final:
+            self._save_final(merged)
 
     def _merge(self, camera: pd.DataFrame, left_arm: pd.DataFrame,
                right_arm: pd.DataFrame, hand: pd.DataFrame) -> pd.DataFrame:

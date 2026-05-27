@@ -18,10 +18,26 @@ def main() -> int:
         default=Mode.TELEOP,
         help="Collection mode: teleop (use *_measured.csv) or mocap (use *_command.csv).",
     )
+    parser.add_argument(
+        "--instruction",
+        type=str,
+        required=True,
+        help="Language instruction for the LeRobot task (e.g. 'pick up the blue marker and place it in the box').",
+    )
+    parser.add_argument(
+        "--save-final",
+        action="store_true",
+        help="Also save the data.csv + frames copy under final_data/<episode>/ (off by default).",
+    )
     args = parser.parse_args()
 
     try:
-        Postprocessor(args.episode_name, args.mode).run()
+        Postprocessor(
+            args.episode_name,
+            args.mode,
+            instruction=args.instruction,
+            save_final=args.save_final,
+        ).run()
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

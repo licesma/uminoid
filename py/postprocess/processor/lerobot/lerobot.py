@@ -1,46 +1,6 @@
-"""Convert exoskeleton teleop CSV+frames into Psi-0's LeRobot-V2 HF dataset.
-
-Input:
-    df          # one row per camera frame (already loaded; produced by Postprocessor)
-    frames_dir  # directory containing the frame_XXXXXX.png files referenced in df["frame"]
-
-`df` columns (Dex3-native format, joint angles in radians):
-    collection_id, frame, host_timestamp,
-    left_hand_thumb_0_joint, left_hand_thumb_1_joint, left_hand_thumb_2_joint,
-    left_hand_middle_0_joint, left_hand_middle_1_joint,
-    left_hand_index_0_joint,  left_hand_index_1_joint,
-    right_hand_thumb_0_joint, right_hand_thumb_1_joint, right_hand_thumb_2_joint,
-    right_hand_index_0_joint,  right_hand_index_1_joint,
-    right_hand_middle_0_joint, right_hand_middle_1_joint,
-    left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint,
-    left_elbow_joint, left_wrist_roll_joint, left_wrist_pitch_joint, left_wrist_yaw_joint,
-    right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint,
-    right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint, right_wrist_yaw_joint,
-
-Psi-0 G1 36-dim layout (state and action share the same packing):
-    [ 0: 7]  left_hand   — Dex3 left joints in enum order                              (7)
-    [ 7:14]  right_hand  — Dex3 right joints in enum order                             (7)
-    [14:21]  left_arm    — shoulder_pitch/roll/yaw, elbow, wrist_roll/pitch/yaw        (7)
-    [21:28]  right_arm   — same ordering                                               (7)
-    [28:32]  torso       — roll, pitch, yaw, height                                    (zeros)
-    [32:36]  base        — vx, vy, vyaw, target_yaw                                    (zeros)
-
-Action convention:
-    action[t] = state[t+1] — the final frame of every episode is dropped (no t+1).
-
-Output (at out_dir/):
-    meta/{info.json, episodes.jsonl, tasks.jsonl, episodes_stats.jsonl,
-          stats_psi0.json, stats.json, quality_report.json}
-    data/chunk-000/episode_XXXXXX.parquet
-    videos/chunk-000/egocentric/episode_XXXXXX.mp4   # H.264 yuv420p 30 fps
-"""
-
 import argparse
-import json
-import math
 import os
 import sys
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -49,12 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # add py/postproce
 import imageio.v3 as iio
 import numpy as np
 import pandas as pd
-from datasets import Dataset, Features, Sequence as DSSequence, Value
+from datasets import Dataset
 
 from processor.lerobot.constants import (
     ARM_SLOTS,
     CHUNKS_SIZE,
-    CODE_VERSION,
     FRAME_RATE,
     HAND_SLOTS,
     LEFT_ARM_COLS,
@@ -62,56 +21,19 @@ from processor.lerobot.constants import (
     PSI0_DIM,
     RIGHT_ARM_COLS,
     RIGHT_HAND_COLS,
+    ROBOT_TYPE,
 )
+from processor.lerobot.metadata import (
+    build_features,
+    episode_stats_block,
+    write_metadata,
+)
+from processor.lerobot.quality import compute_episode_quality, write_quality_report
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """No-op for current Dex3-native CSV format; kept as a hook for future formats."""
     return df
-
-
-@dataclass
-class InfoDict:
-    codebase_version: str
-    robot_type: str
-    total_episodes: int
-    total_frames: int
-    total_tasks: int
-    total_videos: int
-    total_chunks: int
-    chunks_size: int
-    fps: int
-    data_path: str
-    video_path: str
-    features: Dict[str, Any]
-
-
-def _build_features() -> Features:
-    return Features({
-        "states": DSSequence(Value("float32")),
-        "action": DSSequence(Value("float32")),
-        "timestamp": Value("float32"),
-        "frame_index": Value("int64"),
-        "episode_index": Value("int64"),
-        "index": Value("int64"),
-        "task_index": Value("int64"),
-        "next.done": Value("bool"),
-    })
-
-
-def _pack_psi0_vector(row_cols: Dict[str, float]) -> np.ndarray:
-    """Pack one CSV row's joint values into the 36-dim Psi-0 G1 layout."""
-    vec = np.zeros(PSI0_DIM, dtype=np.float32)
-    for i, c in enumerate(LEFT_HAND_COLS):
-        vec[i] = row_cols[c]
-    for i, c in enumerate(RIGHT_HAND_COLS):
-        vec[HAND_SLOTS + i] = row_cols[c]
-    for i, c in enumerate(LEFT_ARM_COLS):
-        vec[2 * HAND_SLOTS + i] = row_cols[c]
-    for i, c in enumerate(RIGHT_ARM_COLS):
-        vec[2 * HAND_SLOTS + ARM_SLOTS + i] = row_cols[c]
-    # torso[28:32] and base[32:36] stay zero — no corresponding exoskeleton signal.
-    return vec
 
 
 def _pack_episode_matrix(ep_df: pd.DataFrame) -> np.ndarray:
@@ -130,6 +52,7 @@ def _pack_episode_matrix(ep_df: pd.DataFrame) -> np.ndarray:
 
 
 def _write_video(frame_paths: List[Path], out_path: Path) -> None:
+    # Format-agnostic: iio.imread auto-detects PNG/JPEG/etc from file contents.
     out_path.parent.mkdir(parents=True, exist_ok=True)
     frames = [iio.imread(str(p)) for p in frame_paths]
     iio.imwrite(
@@ -141,74 +64,14 @@ def _write_video(frame_paths: List[Path], out_path: Path) -> None:
     )
 
 
-def _episode_stats_block(states: np.ndarray, actions: np.ndarray) -> Dict[str, Any]:
-    n = len(states)
-    return {
-        "action": {
-            "min": actions.min(axis=0).tolist(),
-            "max": actions.max(axis=0).tolist(),
-            "mean": actions.mean(axis=0).tolist(),
-            "std": actions.std(axis=0).tolist(),
-            "count": [n],
-        },
-        "states": {
-            "min": states.min(axis=0).tolist(),
-            "max": states.max(axis=0).tolist(),
-            "mean": states.mean(axis=0).tolist(),
-            "std": states.std(axis=0).tolist(),
-            "count": [n],
-        },
-        "timestamp": {
-            "min": [0.0],
-            "max": [(n - 1) / FRAME_RATE],
-            "mean": [((n - 1) / 2) / FRAME_RATE],
-            "std": [n / (2 * FRAME_RATE * math.sqrt(3))],
-            "count": [n],
-        },
-    }
-
-
-def _global_stats(parquet_paths: List[Path]) -> Dict[str, Dict[str, List[float]]]:
-    buffers: Dict[str, List[np.ndarray]] = {"action": [], "states": []}
-    for p in parquet_paths:
-        df = pd.read_parquet(p)
-        for key in buffers:
-            buffers[key].append(
-                np.vstack([np.asarray(x, dtype=np.float32) for x in df[key]])
-            )
-    stats: Dict[str, Dict[str, List[float]]] = {}
-    for key, arrs in buffers.items():
-        arr = np.concatenate(arrs, axis=0)
-        stats[key] = {
-            "mean": arr.mean(axis=0).tolist(),
-            "std": arr.std(axis=0).tolist(),
-            "min": arr.min(axis=0).tolist(),
-            "max": arr.max(axis=0).tolist(),
-            "q01": np.quantile(arr, 0.01, axis=0).tolist(),
-            "q99": np.quantile(arr, 0.99, axis=0).tolist(),
-        }
-    return stats
-
-
-def convert(
+def convert_to_lerobot(
     df: pd.DataFrame,
     frames_dir: Path,
     out_dir: Path,
-    *,
     instruction: str,
-    robot_type: str,
-    flag_dt_ms: float,
-    flag_dup_ratio: float,
-    exclude_collection_ids: list[int],
 ) -> Path:
     df = _normalize_columns(df)
     joint_cols = [*LEFT_HAND_COLS, *RIGHT_HAND_COLS, *LEFT_ARM_COLS, *RIGHT_ARM_COLS]
-    missing_cols = [
-        c for c in ["collection_id", "frame", "host_timestamp", *joint_cols]
-        if c not in df.columns
-    ]
-    if missing_cols:
-        raise ValueError(f"df missing expected columns: {missing_cols}")
 
     work_dir = out_dir
     (work_dir / "data").mkdir(parents=True, exist_ok=True)
@@ -216,13 +79,8 @@ def convert(
     meta_dir = work_dir / "meta"
     meta_dir.mkdir(parents=True, exist_ok=True)
 
-    features = _build_features()
-    all_keys = sorted(df["collection_id"].unique().tolist())
-    excluded = set(exclude_collection_ids)
-    episode_keys = [k for k in all_keys if int(k) not in excluded]
-    skipped = [k for k in all_keys if int(k) in excluded]
-    if skipped:
-        print(f"excluding {len(skipped)} collection_id(s) by request: {skipped}")
+    features = build_features()
+    episode_keys = sorted(df["collection_id"].unique().tolist())
 
     task_index = 0
     tasks = [(task_index, instruction)]
@@ -237,12 +95,8 @@ def convert(
     probe_img = iio.imread(str(frames_dir / df["frame"].iloc[0]))
     h, w = int(probe_img.shape[0]), int(probe_img.shape[1])
 
-    expected_dt_ms = 1000.0 / FRAME_RATE  # ~33.3 ms at 30Hz
     for ep_idx, key in enumerate(episode_keys):
         ep_df = df[df["collection_id"] == key].sort_values("host_timestamp").reset_index(drop=True)
-        if len(ep_df) < 2:
-            print(f"[skip] collection_id={key} has {len(ep_df)} frame(s); need ≥2 for action=next")
-            continue
 
         state_mat = _pack_episode_matrix(ep_df)        # (T, 36)
         # action[t] = state[t+1] — last frame has no successor, drop it.
@@ -250,45 +104,10 @@ def convert(
         actions = state_mat[1:]
         frame_names = ep_df["frame"].tolist()[:-1]
 
-        # --- quality diagnostics -------------------------------------------
-        dt_ms = np.diff(ep_df["host_timestamp"].to_numpy().astype(np.float64)) / 1000.0
-        # Consecutive identical joint/hand rows: a fingerprint of stale async
-        # sync (the joint/hand reader had no fresh reading between two frames,
-        # so the producer reused the previous sample). Harmless in small doses,
-        # but a high ratio means the async streams fell behind the camera.
-        jmat = ep_df[joint_cols].to_numpy()
-        dup_mask = np.all(jmat[1:] == jmat[:-1], axis=1)
-        dup_count = int(dup_mask.sum())
-        dup_ratio = dup_count / max(1, len(dup_mask))
-
-        flags = []
-        if dt_ms.max() > flag_dt_ms:
-            flags.append("large_timestamp_gap")
-        if dup_ratio > flag_dup_ratio:
-            flags.append("stale_async_sync")
-
-        q = {
-            "episode_index": ep_idx,
-            "collection_id": int(key),
-            "n_frames_csv": int(len(ep_df)),
-            "n_frames_written": int(len(states)),
-            "dt_min_ms": round(float(dt_ms.min()), 2),
-            "dt_median_ms": round(float(np.median(dt_ms)), 2),
-            "dt_p95_ms": round(float(np.quantile(dt_ms, 0.95)), 2),
-            "dt_max_ms": round(float(dt_ms.max()), 2),
-            "n_gaps_gt_100ms": int((dt_ms > 100.0).sum()),
-            "n_gaps_gt_200ms": int((dt_ms > 200.0).sum()),
-            "consecutive_dup_joint_rows": dup_count,
-            "consecutive_dup_joint_ratio": round(dup_ratio, 4),
-            "flags": flags,
-        }
+        q = compute_episode_quality(ep_idx, key, ep_df, joint_cols, n_frames_written=len(states))
         quality_records.append(q)
-        # ------------------------------------------------------------------
 
         frame_paths = [frames_dir / name for name in frame_names]
-        missing = [p for p in frame_paths if not p.is_file()]
-        if missing:
-            raise FileNotFoundError(f"missing {len(missing)} frames for episode {ep_idx}, e.g. {missing[0]}")
 
         n = len(states)
         rows = [
@@ -325,124 +144,27 @@ def convert(
             "length": n,
             "dataset_from_index": dataset_cursor,
             "dataset_to_index": dataset_cursor + n - 1,
-            "robot_type": robot_type,
+            "robot_type": ROBOT_TYPE,
             "instruction": instruction,
         })
         episodes_stats_lines.append({
             "episode_index": ep_idx,
-            "stats": _episode_stats_block(states, actions),
+            "stats": episode_stats_block(states, actions),
         })
         dataset_cursor += n
         total_frames += n
-        flag_str = f"  ⚠ {','.join(flags)}" if flags else ""
-        print(
-            f"[ok] episode {ep_idx:06d}  collection={key}  frames={n}  "
-            f"dt_max={q['dt_max_ms']:.1f}ms  dup={dup_count}{flag_str}"
-        )
 
-    if total_frames == 0:
-        raise RuntimeError("no episodes produced — check input data")
-
-    features_meta = {
-        "observation.images.egocentric": {
-            "dtype": "video",
-            "shape": [h, w, 3],
-            "names": ["height", "width", "channel"],
-            "video_info": {
-                "video.fps": float(FRAME_RATE),
-                "video.codec": "h264",
-                "video.pix_fmt": "yuv420p",
-                "video.is_depth_map": False,
-                "has_audio": False,
-            },
-        },
-        "states": {"dtype": "float32", "shape": [PSI0_DIM]},
-        "action": {"dtype": "float32", "shape": [PSI0_DIM]},
-        "timestamp": {"dtype": "float32", "shape": [1]},
-        "frame_index": {"dtype": "int64", "shape": [1]},
-        "episode_index": {"dtype": "int64", "shape": [1]},
-        "index": {"dtype": "int64", "shape": [1]},
-        "next.done": {"dtype": "bool", "shape": [1]},
-        "task_index": {"dtype": "int64", "shape": [1]},
-    }
-    num_episodes = len(episodes_meta)
-    info = InfoDict(
-        codebase_version=CODE_VERSION,
-        robot_type=robot_type,
-        total_episodes=num_episodes,
+    write_metadata(
+        meta_dir,
+        work_dir,
         total_frames=total_frames,
-        total_tasks=len(tasks),
-        total_videos=num_episodes,
-        total_chunks=math.ceil(num_episodes / CHUNKS_SIZE),
-        chunks_size=CHUNKS_SIZE,
-        fps=FRAME_RATE,
-        data_path="data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
-        video_path="videos/chunk-{episode_chunk:03d}/egocentric/episode_{episode_index:06d}.mp4",
-        features=features_meta,
+        episodes_meta=episodes_meta,
+        episodes_stats_lines=episodes_stats_lines,
+        tasks=tasks,
+        h=h,
+        w=w,
     )
-    (meta_dir / "info.json").write_text(json.dumps(asdict(info), indent=4))
-
-    with open(meta_dir / "episodes.jsonl", "w") as f:
-        for row in episodes_meta:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-    with open(meta_dir / "tasks.jsonl", "w") as f:
-        for ti, instr in tasks:
-            slug = instr.replace(" ", "_")
-            f.write(json.dumps({
-                "task_index": ti,
-                "task": f"default/{slug}",
-                "category": "default",
-                "description": instr,
-            }, ensure_ascii=False) + "\n")
-
-    with open(meta_dir / "episodes_stats.jsonl", "w") as f:
-        for row in episodes_stats_lines:
-            f.write(json.dumps(row) + "\n")
-
-    parquet_paths = sorted((work_dir / "data").rglob("episode_*.parquet"))
-    stats = _global_stats(parquet_paths)
-    with open(meta_dir / "stats_psi0.json", "w") as f:
-        json.dump(stats, f, indent=2)
-    with open(meta_dir / "stats.json", "w") as f:
-        json.dump(stats, f, indent=2)
-
-    flagged = [q for q in quality_records if q["flags"]]
-    report = {
-        "fps_assumed": FRAME_RATE,
-        "expected_dt_ms": expected_dt_ms,
-        "flag_dt_ms": flag_dt_ms,
-        "flag_dup_ratio": flag_dup_ratio,
-        "n_episodes_total": len(quality_records),
-        "n_episodes_flagged": len(flagged),
-        "flagged_episode_indices": [q["episode_index"] for q in flagged],
-        "flagged_collection_ids": [q["collection_id"] for q in flagged],
-        "per_episode": quality_records,
-    }
-    with open(meta_dir / "quality_report.json", "w") as f:
-        json.dump(report, f, indent=2)
-
-    print(f"\n✅ wrote {num_episodes} episodes, {total_frames} frames to {work_dir}")
-    dt_max_all = max(q["dt_max_ms"] for q in quality_records)
-    mean_fps = 1000.0 / np.mean([q["dt_median_ms"] for q in quality_records])
-    print(
-        f"timing: median-dt-based fps ≈ {mean_fps:.2f} (assumed {FRAME_RATE}); "
-        f"worst intra-ep gap = {dt_max_all:.1f} ms"
-    )
-    if flagged:
-        print(f"\n⚠ {len(flagged)} episode(s) flagged for quality review:")
-        for q in flagged:
-            print(
-                f"  ep={q['episode_index']:>4}  cid={q['collection_id']:>3}  "
-                f"n={q['n_frames_written']:>3}  "
-                f"dt_max={q['dt_max_ms']:>8.1f}ms  "
-                f"dup={q['consecutive_dup_joint_rows']}/{q['n_frames_csv']-1} "
-                f"({q['consecutive_dup_joint_ratio']:.1%})  "
-                f"flags={q['flags']}"
-            )
-    else:
-        print("no episodes flagged — all gaps within tolerance.")
-    print(f"full per-episode quality report: {meta_dir / 'quality_report.json'}")
+    write_quality_report(meta_dir, quality_records)
     return work_dir
 
 
@@ -453,30 +175,17 @@ def main():
     parser.add_argument("--out-dir", type=Path, required=True,
                         help="Dataset root directly (meta/, data/, videos/ will be created inside)")
     parser.add_argument("--instruction", type=str, default="exoskeleton teleop")
-    parser.add_argument("--robot-type", type=str, default="exoskeleton")
-    parser.add_argument("--flag-dt-ms", type=float, default=100.0,
-                        help="Flag episode if any host_timestamp gap exceeds this many ms")
-    parser.add_argument("--flag-dup-ratio", type=float, default=0.10,
-                        help="Flag episode if fraction of consecutive-identical joint rows exceeds this")
-    parser.add_argument("--exclude-collection-ids", type=str, default="",
-                        help="Comma-separated collection_id values to drop entirely (e.g. '51,73')")
     args = parser.parse_args()
-
-    exclude_ids = [int(x) for x in args.exclude_collection_ids.split(",") if x.strip()]
 
     data_root = args.data_root.expanduser().resolve()
     df = pd.read_csv(data_root / "data.csv")
     frames_dir = data_root / "frames"
 
-    convert(
+    convert_to_lerobot(
         df,
         frames_dir,
         out_dir=args.out_dir.expanduser().resolve(),
         instruction=args.instruction,
-        robot_type=args.robot_type,
-        flag_dt_ms=args.flag_dt_ms,
-        flag_dup_ratio=args.flag_dup_ratio,
-        exclude_collection_ids=exclude_ids,
     )
 
 
