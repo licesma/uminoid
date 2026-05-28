@@ -13,19 +13,18 @@ import pandas as pd
 
 from helpers.error_check import ensure
 from processor.lerobot.constants import (
-    LEFT_ARM_COLS,
-    LEFT_HAND_COLS,
-    RIGHT_ARM_COLS,
-    RIGHT_HAND_COLS,
+    ACTION_COLUMNS,
+    STATE_COLUMNS,
 )
 
 META_COLS = ["collection_id", "frame", "host_timestamp"]
-JOINT_COLS = [*LEFT_HAND_COLS, *RIGHT_HAND_COLS, *LEFT_ARM_COLS, *RIGHT_ARM_COLS]
-EXPECTED_COLS = [*META_COLS, *JOINT_COLS]
+STATE_JOINT_COLS = [c for block in STATE_COLUMNS for c in block]
+ACTION_JOINT_COLS = [c for block in ACTION_COLUMNS for c in block]
+EXPECTED_COLS = [*META_COLS, *STATE_JOINT_COLS, *ACTION_JOINT_COLS]
 
-# LeRobot encodes action[t] = state[t+1], so any collection with <2 frames
-# cannot produce a valid (state, action) pair and must be rejected upstream.
-MIN_FRAMES_PER_COLLECTION = 2
+# State and action are now independent streams (action from command CSV, not
+# state[t+1]), so 1-frame collections are technically valid. Keep MIN at 1.
+MIN_FRAMES_PER_COLLECTION = 1
 
 
 def validate_columns(df: pd.DataFrame) -> None:

@@ -12,16 +12,12 @@ import pandas as pd
 from datasets import Dataset
 
 from processor.lerobot.constants import (
-    ARM_SLOTS,
+    ACTION_COLUMNS,
     CHUNKS_SIZE,
     FRAME_RATE,
-    HAND_SLOTS,
-    LEFT_ARM_COLS,
-    LEFT_HAND_COLS,
     PSI0_DIM,
-    RIGHT_ARM_COLS,
-    RIGHT_HAND_COLS,
     ROBOT_TYPE,
+    STATE_COLUMNS,
 )
 from processor.lerobot.metadata import (
     build_features,
@@ -36,12 +32,10 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _pack_episode_matrix(ep_df: pd.DataFrame) -> np.ndarray:
-    """Shape: (T, 36) — state vector per row, in Psi-0 G1 layout."""
+def _pack_episode_matrix(ep_df: pd.DataFrame, col_blocks: List[List[str]]) -> np.ndarray:
+    """Shape: (T, PSI0_DIM) — pack the given column blocks into a fixed-layout."""
     T = len(ep_df)
     mat = np.zeros((T, PSI0_DIM), dtype=np.float32)
-    col_blocks = [ LEFT_HAND_COLS, RIGHT_HAND_COLS, LEFT_ARM_COLS, RIGHT_ARM_COLS ]
-
     offset = 0
     for cols in col_blocks:
         mat[:, offset:offset + len(cols)] = ep_df[cols].to_numpy(dtype=np.float32)
@@ -74,7 +68,8 @@ def convert_to_lerobot(
     `ep_idx` values via the running counter — collisions across sessions
     are structurally impossible.
     """
-    joint_cols = [*LEFT_HAND_COLS, *RIGHT_HAND_COLS, *LEFT_ARM_COLS, *RIGHT_ARM_COLS]
+    state_cols  = [c for block in STATE_COLUMNS  for c in block]
+    action_cols = [c for block in ACTION_COLUMNS for c in block]
 
     work_dir = out_dir
     (work_dir / "data").mkdir(parents=True, exist_ok=True)
@@ -105,13 +100,13 @@ def convert_to_lerobot(
         for key in sorted(df["collection_id"].unique().tolist()):
             ep_df = df[df["collection_id"] == key].sort_values("host_timestamp").reset_index(drop=True)
 
-            state_mat = _pack_episode_matrix(ep_df)        # (T, 36)
-            # action[t] = state[t+1] — last frame has no successor, drop it.
-            states = state_mat[:-1]
-            actions = state_mat[1:]
-            frame_names = ep_df["frame"].tolist()[:-1]
+            states  = _pack_episode_matrix(ep_df, STATE_COLUMNS)   # (T, 36) measured
+            actions = _pack_episode_matrix(ep_df, ACTION_COLUMNS)  # (T, 36) commanded
+            frame_names = ep_df["frame"].tolist()
 
-            q = compute_episode_quality(ep_idx, key, ep_df, joint_cols, n_frames_written=len(states))
+            q = compute_episode_quality(
+                ep_idx, key, ep_df, state_cols, action_cols, n_frames_written=len(states),
+            )
             quality_records.append(q)
 
             frame_paths = [frames_dir / name for name in frame_names]

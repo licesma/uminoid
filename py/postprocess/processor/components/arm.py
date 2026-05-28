@@ -7,6 +7,7 @@ from utils.joints import ARM_JOINTS
 from helpers.error_check import ensure
 from processor.components.mode import Mode
 from processor.components.status import filter_completed
+from processor.lerobot.constants import ACTION_SUFFIX, STATE_SUFFIX
 
 DISABLED_ARM_ELBOW_Q = 0.8
 DISABLED_ARM_POSE = {j: (DISABLED_ARM_ELBOW_Q if j == "elbow" else 0.0) for j in ARM_JOINTS}
@@ -14,52 +15,64 @@ DISABLED_ARM_POSE = {j: (DISABLED_ARM_ELBOW_Q if j == "elbow" else 0.0) for j in
 META_COLS = ["collection_id", "host_timestamp"]
 
 
-def _read_arm_csv(path: Path) -> pd.DataFrame:
-    """Load an arm CSV (already in robot-frame radians with named joint columns)."""
+def _read_arm_csv(path: Path, suffix: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     if "timestamp" in df.columns:
         df = df.drop(columns=["timestamp"])
-    return df
+    rename = {c: c + suffix for c in df.columns if c not in META_COLS}
+    return df.rename(columns=rename)
 
 
 def _synthesize_disabled_arm(reference: pd.DataFrame, side: str) -> pd.DataFrame:
     """Build the missing `side` at the disabled-arm pose, mirroring the loaded
-    side's joint columns (with the prefix swapped) so the two align."""
+    side's joint columns."""
     other = "right" if side == "left" else "left"
     df = reference[META_COLS].copy()
     for col in reference.columns:
         if col in META_COLS:
             continue
-        joint = col.removeprefix(f"{other}_").removesuffix("_joint")  # e.g. "elbow"
-        df[f"{side}_{joint}_joint"] = DISABLED_ARM_POSE[joint]
+        # col is like "right_elbow_joint_state"; pull off side prefix + suffix to get "elbow"
+        for suffix in (STATE_SUFFIX, ACTION_SUFFIX):
+            if col.endswith(suffix):
+                base = col[: -len(suffix)]
+                joint = base.removeprefix(f"{other}_").removesuffix("_joint")
+                df[f"{side}_{joint}_joint{suffix}"] = DISABLED_ARM_POSE[joint]
+                break
     return df
 
 
 def _load_side(episode_path: Path, side: str, mode: Mode, status_df: pd.DataFrame) -> pd.DataFrame | None:
-    """Load one arm side per collection mode, filtered to completed collections.
-
-    Returns None when the side has no recording at all (caller synthesizes it).
-    Raises when a side is present but its mode-expected files are incomplete.
-    """
+    """Load one arm side, returning a df with both _state-suffixed (measured)
+    and _action-suffixed (command) joint columns, filtered to completed
+    collections."""
     measured = episode_path / f"{side}_measured.csv"
     command = episode_path / f"{side}_command.csv"
 
     if mode is Mode.MOCAP:
         if not command.exists():
             return None
-        df = _read_arm_csv(command)
-    else:  # TELEOP: both files required per side; return measured.
+        cmd_df = _read_arm_csv(command, ACTION_SUFFIX)
+        state_df = _read_arm_csv(command, STATE_SUFFIX)
+        merged = pd.merge(cmd_df, state_df, on=META_COLS, how="inner")
+    else:  # TELEOP: both files required per side.
         if not measured.exists() and not command.exists():
             return None
         ensure(
             measured.exists() and command.exists(),
             f"teleop expects both {measured.name} and {command.name} in {episode_path}",
         )
-        df = _read_arm_csv(measured)
+        state_df = _read_arm_csv(measured, STATE_SUFFIX).sort_values("host_timestamp")
+        action_df = _read_arm_csv(command, ACTION_SUFFIX).sort_values("host_timestamp")
+        # measured and command stream at independent rates; align action to
+        # the state timeline by nearest host_timestamp within the collection.
+        merged = pd.merge_asof(
+            state_df, action_df,
+            on="host_timestamp", by="collection_id", direction="nearest",
+        )
 
-    if df.empty:
+    if merged.empty:
         return None
-    return filter_completed(df, status_df)
+    return filter_completed(merged, status_df)
 
 
 def load_arms(episode_path: Path, status_df: pd.DataFrame, mode: Mode) -> tuple[pd.DataFrame, pd.DataFrame]:

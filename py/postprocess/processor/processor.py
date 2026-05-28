@@ -11,7 +11,9 @@ from processor.components.camera import load_camera
 from processor.components.mode import Mode
 from processor.components.frame import compress_frames, OUTPUT_DIR
 from processor.components.columns import (
+    ACTION_JOINT_COLS,
     META_COLS,
+    STATE_JOINT_COLS,
     validate_collection_ids,
     validate_columns,
     validate_frames_exist,
@@ -79,10 +81,9 @@ class Postprocessor:
 
         merged["frame"] = merged["frame_number"].map(lambda n: f"frame_{int(n):06d}.png")
 
-        def without_keys(df: pd.DataFrame) -> list[str]:
-            return [c for c in df.columns if c not in KEYS]
-
-        final_cols = META_COLS + without_keys(hand) + without_keys(left_arm) + without_keys(right_arm)
+        # Final ordering: meta, then all state cols (hand+arm) then all action
+        # cols, matching what STATE_COLUMNS / ACTION_COLUMNS expect downstream.
+        final_cols = META_COLS + STATE_JOINT_COLS + ACTION_JOINT_COLS
         return merged[final_cols]
 
     def _save_final(self, episode_df: pd.DataFrame, ep_path: Path) -> None:

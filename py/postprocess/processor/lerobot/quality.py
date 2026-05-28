@@ -12,29 +12,41 @@ from processor.lerobot.constants import (
 )
 
 
+def _dup_stats(ep_df: pd.DataFrame, cols: List[str]) -> tuple[int, float]:
+    mat = ep_df[cols].to_numpy()
+    if len(mat) < 2:
+        return 0, 0.0
+    dup_mask = np.all(mat[1:] == mat[:-1], axis=1)
+    count = int(dup_mask.sum())
+    ratio = count / len(dup_mask)
+    return count, ratio
+
+
 def compute_episode_quality(
     ep_idx: int,
     collection_id: int,
     ep_df: pd.DataFrame,
-    joint_cols: List[str],
+    state_cols: List[str],
+    action_cols: List[str],
     n_frames_written: int,
 ) -> Dict[str, Any]:
-    """Build the per-episode quality record (the `q` dict)."""
-    dt_ms = np.diff(ep_df["host_timestamp"].to_numpy().astype(np.float64)) / 1000.0
+    """Build the per-episode quality record (the `q` dict).
 
-    # Consecutive identical joint/hand rows: a fingerprint of stale async
-    # sync (the joint/hand reader had no fresh reading between two frames,
-    # so the producer reused the previous sample). Harmless in small doses,
-    # but a high ratio means the async streams fell behind the camera.
-    jmat = ep_df[joint_cols].to_numpy()
-    dup_mask = np.all(jmat[1:] == jmat[:-1], axis=1)
-    dup_count = int(dup_mask.sum())
-    dup_ratio = dup_count / max(1, len(dup_mask))
+    Dup-row counts are reported for both state and action streams, but only
+    the state ratio drives the `stale_async_sync` flag. Identical consecutive
+    rows on the action (command) stream are normal whenever the operator
+    holds still, so they would otherwise produce false positives.
+    """
+    dt_ms = np.diff(ep_df["host_timestamp"].to_numpy().astype(np.float64)) / 1000.0
+    has_gaps = len(dt_ms) > 0
+
+    state_dup_count, state_dup_ratio = _dup_stats(ep_df, state_cols)
+    action_dup_count, action_dup_ratio = _dup_stats(ep_df, action_cols)
 
     flags = []
-    if dt_ms.max() > GAP_THRESHOLD:
+    if has_gaps and dt_ms.max() > GAP_THRESHOLD:
         flags.append("large_timestamp_gap")
-    if dup_ratio > DUPLICATION_THRESHOLD_RATIO:
+    if state_dup_ratio > DUPLICATION_THRESHOLD_RATIO:
         flags.append("stale_async_sync")
 
     return {
@@ -42,14 +54,16 @@ def compute_episode_quality(
         "collection_id": int(collection_id),
         "n_frames_csv": int(len(ep_df)),
         "n_frames_written": int(n_frames_written),
-        "dt_min_ms": round(float(dt_ms.min()), 2),
-        "dt_median_ms": round(float(np.median(dt_ms)), 2),
-        "dt_p95_ms": round(float(np.quantile(dt_ms, 0.95)), 2),
-        "dt_max_ms": round(float(dt_ms.max()), 2),
-        "n_gaps_gt_100ms": int((dt_ms > 100.0).sum()),
-        "n_gaps_gt_200ms": int((dt_ms > 200.0).sum()),
-        "consecutive_dup_joint_rows": dup_count,
-        "consecutive_dup_joint_ratio": round(dup_ratio, 4),
+        "dt_min_ms": round(float(dt_ms.min()), 2) if has_gaps else None,
+        "dt_median_ms": round(float(np.median(dt_ms)), 2) if has_gaps else None,
+        "dt_p95_ms": round(float(np.quantile(dt_ms, 0.95)), 2) if has_gaps else None,
+        "dt_max_ms": round(float(dt_ms.max()), 2) if has_gaps else None,
+        "n_gaps_gt_100ms": int((dt_ms > 100.0).sum()) if has_gaps else 0,
+        "n_gaps_gt_200ms": int((dt_ms > 200.0).sum()) if has_gaps else 0,
+        "consecutive_dup_state_rows": state_dup_count,
+        "consecutive_dup_state_ratio": round(state_dup_ratio, 4),
+        "consecutive_dup_action_rows": action_dup_count,
+        "consecutive_dup_action_ratio": round(action_dup_ratio, 4),
         "flags": flags,
     }
 
