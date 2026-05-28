@@ -40,14 +40,12 @@ def _pack_episode_matrix(ep_df: pd.DataFrame) -> np.ndarray:
     """Shape: (T, 36) — state vector per row, in Psi-0 G1 layout."""
     T = len(ep_df)
     mat = np.zeros((T, PSI0_DIM), dtype=np.float32)
-    col_blocks = [
-        (LEFT_HAND_COLS,  0),
-        (RIGHT_HAND_COLS, HAND_SLOTS),
-        (LEFT_ARM_COLS,   2 * HAND_SLOTS),
-        (RIGHT_ARM_COLS,  2 * HAND_SLOTS + ARM_SLOTS),
-    ]
-    for cols, offset in col_blocks:
+    col_blocks = [ LEFT_HAND_COLS, RIGHT_HAND_COLS, LEFT_ARM_COLS, RIGHT_ARM_COLS ]
+
+    offset = 0
+    for cols in col_blocks:
         mat[:, offset:offset + len(cols)] = ep_df[cols].to_numpy(dtype=np.float32)
+        offset += len(cols)
     return mat
 
 
@@ -65,12 +63,17 @@ def _write_video(frame_paths: List[Path], out_path: Path) -> None:
 
 
 def convert_to_lerobot(
-    df: pd.DataFrame,
-    frames_dir: Path,
+    sessions: List[tuple[pd.DataFrame, Path]],
     out_dir: Path,
     instruction: str,
 ) -> Path:
-    df = _normalize_columns(df)
+    """Build a single LeRobot-V2 dataset from N (df, frames_dir) sessions.
+
+    Each session's `collection_id`s define episodes; sessions don't need
+    distinct collection_ids because the outer loop assigns globally unique
+    `ep_idx` values via the running counter — collisions across sessions
+    are structurally impossible.
+    """
     joint_cols = [*LEFT_HAND_COLS, *RIGHT_HAND_COLS, *LEFT_ARM_COLS, *RIGHT_ARM_COLS]
 
     work_dir = out_dir
@@ -80,7 +83,6 @@ def convert_to_lerobot(
     meta_dir.mkdir(parents=True, exist_ok=True)
 
     features = build_features()
-    episode_keys = sorted(df["collection_id"].unique().tolist())
 
     task_index = 0
     tasks = [(task_index, instruction)]
@@ -88,71 +90,77 @@ def convert_to_lerobot(
     episodes_meta: List[Dict[str, Any]] = []
     episodes_stats_lines: List[Dict[str, Any]] = []
     quality_records: List[Dict[str, Any]] = []
-    dataset_cursor = 0
+    ep_idx = 0                # global episode index across all sessions
+    dataset_cursor = 0        # global frame cursor across all sessions
     total_frames = 0
+    h = w = 0                 # filled from the first session's first frame
 
-    # Probe first frame for resolution.
-    probe_img = iio.imread(str(frames_dir / df["frame"].iloc[0]))
-    h, w = int(probe_img.shape[0]), int(probe_img.shape[1])
+    for session_idx, (df, frames_dir) in enumerate(sessions):
+        df = _normalize_columns(df)
 
-    for ep_idx, key in enumerate(episode_keys):
-        ep_df = df[df["collection_id"] == key].sort_values("host_timestamp").reset_index(drop=True)
+        if session_idx == 0:
+            probe_img = iio.imread(str(frames_dir / df["frame"].iloc[0]))
+            h, w = int(probe_img.shape[0]), int(probe_img.shape[1])
 
-        state_mat = _pack_episode_matrix(ep_df)        # (T, 36)
-        # action[t] = state[t+1] — last frame has no successor, drop it.
-        states = state_mat[:-1]
-        actions = state_mat[1:]
-        frame_names = ep_df["frame"].tolist()[:-1]
+        for key in sorted(df["collection_id"].unique().tolist()):
+            ep_df = df[df["collection_id"] == key].sort_values("host_timestamp").reset_index(drop=True)
 
-        q = compute_episode_quality(ep_idx, key, ep_df, joint_cols, n_frames_written=len(states))
-        quality_records.append(q)
+            state_mat = _pack_episode_matrix(ep_df)        # (T, 36)
+            # action[t] = state[t+1] — last frame has no successor, drop it.
+            states = state_mat[:-1]
+            actions = state_mat[1:]
+            frame_names = ep_df["frame"].tolist()[:-1]
 
-        frame_paths = [frames_dir / name for name in frame_names]
+            q = compute_episode_quality(ep_idx, key, ep_df, joint_cols, n_frames_written=len(states))
+            quality_records.append(q)
 
-        n = len(states)
-        rows = [
-            {
-                "states": states[i].tolist(),
-                "action": actions[i].tolist(),
-                "timestamp": float(i) / FRAME_RATE,
-                "frame_index": i,
+            frame_paths = [frames_dir / name for name in frame_names]
+
+            n = len(states)
+            rows = [
+                {
+                    "states": states[i].tolist(),
+                    "action": actions[i].tolist(),
+                    "timestamp": float(i) / FRAME_RATE,
+                    "frame_index": i,
+                    "episode_index": ep_idx,
+                    "index": dataset_cursor + i,
+                    "task_index": task_index,
+                    "next.done": (i == n - 1),
+                }
+                for i in range(n)
+            ]
+
+            chunk_id = ep_idx // CHUNKS_SIZE
+            parquet_path = work_dir / "data" / f"chunk-{chunk_id:03d}" / f"episode_{ep_idx:06d}.parquet"
+            video_path = (
+                work_dir / "videos" / f"chunk-{chunk_id:03d}" / "egocentric" / f"episode_{ep_idx:06d}.mp4"
+            )
+            parquet_path.parent.mkdir(parents=True, exist_ok=True)
+
+            ds = Dataset.from_list(rows, features=features)
+            tmp_parquet = parquet_path.with_suffix(".parquet.tmp")
+            ds.to_parquet(str(tmp_parquet))
+            os.replace(tmp_parquet, parquet_path)
+
+            _write_video(frame_paths, video_path)
+
+            episodes_meta.append({
                 "episode_index": ep_idx,
-                "index": dataset_cursor + i,
-                "task_index": task_index,
-                "next.done": (i == n - 1),
-            }
-            for i in range(n)
-        ]
-
-        chunk_id = ep_idx // CHUNKS_SIZE
-        parquet_path = work_dir / "data" / f"chunk-{chunk_id:03d}" / f"episode_{ep_idx:06d}.parquet"
-        video_path = (
-            work_dir / "videos" / f"chunk-{chunk_id:03d}" / "egocentric" / f"episode_{ep_idx:06d}.mp4"
-        )
-        parquet_path.parent.mkdir(parents=True, exist_ok=True)
-
-        ds = Dataset.from_list(rows, features=features)
-        tmp_parquet = parquet_path.with_suffix(".parquet.tmp")
-        ds.to_parquet(str(tmp_parquet))
-        os.replace(tmp_parquet, parquet_path)
-
-        _write_video(frame_paths, video_path)
-
-        episodes_meta.append({
-            "episode_index": ep_idx,
-            "tasks": [task_index],
-            "length": n,
-            "dataset_from_index": dataset_cursor,
-            "dataset_to_index": dataset_cursor + n - 1,
-            "robot_type": ROBOT_TYPE,
-            "instruction": instruction,
-        })
-        episodes_stats_lines.append({
-            "episode_index": ep_idx,
-            "stats": episode_stats_block(states, actions),
-        })
-        dataset_cursor += n
-        total_frames += n
+                "tasks": [task_index],
+                "length": n,
+                "dataset_from_index": dataset_cursor,
+                "dataset_to_index": dataset_cursor + n - 1,
+                "robot_type": ROBOT_TYPE,
+                "instruction": instruction,
+            })
+            episodes_stats_lines.append({
+                "episode_index": ep_idx,
+                "stats": episode_stats_block(states, actions),
+            })
+            dataset_cursor += n
+            total_frames += n
+            ep_idx += 1
 
     write_metadata(
         meta_dir,
@@ -182,8 +190,7 @@ def main():
     frames_dir = data_root / "frames"
 
     convert_to_lerobot(
-        df,
-        frames_dir,
+        [(df, frames_dir)],
         out_dir=args.out_dir.expanduser().resolve(),
         instruction=args.instruction,
     )

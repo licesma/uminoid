@@ -1,5 +1,6 @@
 import argparse
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # add py/ to sys.path
@@ -9,8 +10,18 @@ from processor.components.mode import Mode
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Postprocess a recorded session.")
-    parser.add_argument("episode_name", help="Session folder name under data/, e.g. april_19_16:31")
+    parser = argparse.ArgumentParser(description="Postprocess one or more recorded sessions into a single LeRobot dataset.")
+    parser.add_argument(
+        "episode_names",
+        nargs="+",
+        help="One or more session folder names under data/, e.g. may_25_17:59 may_25_18:28",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        required=True,
+        help="Name of the combined LeRobot dataset directory under training_data/.",
+    )
     parser.add_argument(
         "--mode",
         type=Mode,
@@ -27,19 +38,28 @@ def main() -> int:
     parser.add_argument(
         "--save-final",
         action="store_true",
-        help="Also save the data.csv + frames copy under final_data/<episode>/ (off by default).",
+        help="Also save data.csv + frames copy under final_data/<episode>/ for each session (off by default).",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print full traceback on error instead of just the message.",
     )
     args = parser.parse_args()
 
     try:
         Postprocessor(
-            args.episode_name,
-            args.mode,
+            episode_names=args.episode_names,
+            name=args.name,
+            mode=args.mode,
             instruction=args.instruction,
             save_final=args.save_final,
         ).run()
     except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if args.debug:
+            traceback.print_exc()
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
 

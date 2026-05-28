@@ -37,10 +37,10 @@ def validate_frames_exist(df: pd.DataFrame, frames_dir: Path) -> None:
     """Every PNG referenced in df["frame"] must exist on disk under frames_dir."""
     missing = [name for name in df["frame"].astype(str).unique()
                if not (frames_dir / name).is_file()]
-    ensure(
-        not missing,
-        f"{frames_dir} is missing {len(missing)} referenced PNG(s), e.g. {missing[0]}",
-    )
+    if missing:
+        raise ValueError(
+            f"{frames_dir} is missing {len(missing)} referenced PNG(s), e.g. {missing[0]}"
+        )
 
 
 def validate_collection_ids(df: pd.DataFrame) -> None:

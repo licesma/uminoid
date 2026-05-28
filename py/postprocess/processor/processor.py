@@ -24,40 +24,50 @@ KEYS = ["collection_id", "host_timestamp"]
 
 
 class Postprocessor:
-    def __init__(self, episode_name: str, mode: Mode, instruction: str, save_final: bool = False):
-        self.episode_path: Path = DATA_DIR / episode_name
+    def __init__(
+        self,
+        episode_names: list[str],
+        name: str,
+        mode: Mode,
+        instruction: str,
+        save_final: bool = False,
+    ):
+        self.episode_paths: list[Path] = [DATA_DIR / n for n in episode_names]
+        self.name: str = name
         self.mode: Mode = mode
         self.instruction: str = instruction
         self.save_final: bool = save_final
-        self.status_df: pd.DataFrame = load_completed_collections(self.episode_path)
 
     def run(self) -> None:
-        compress_frames(self.episode_path)
-        left_arm, right_arm = load_arms(self.episode_path, self.status_df, self.mode)
-        hand = load_hand(self.episode_path, self.status_df)
-        camera = load_camera(self.episode_path, self.status_df)
+        sessions: list[tuple[pd.DataFrame, Path]] = []
 
-        merged = self._merge(camera, left_arm, right_arm, hand)
-        validate_columns(merged)
-        validate_collection_ids(merged)
-        validate_frames_exist(merged, self.episode_path / OUTPUT_DIR)
-        out = self.episode_path / DATA_CSV
-        merged.to_csv(out, index=False)
-        print(f"Wrote {len(merged)} rows -> {out}")
+        for ep_path in self.episode_paths:
+            status_df = load_completed_collections(ep_path)
+            compress_frames(ep_path)
+            left_arm, right_arm = load_arms(ep_path, status_df, self.mode)
+            hand = load_hand(ep_path, status_df)
+            camera = load_camera(ep_path, status_df)
 
-        convert_to_lerobot(
-            merged,
-            self.episode_path / OUTPUT_DIR,
-            TRAINING_DATA_DIR / self.episode_path.name,
-            self.instruction,
-        )
-        print(f"Wrote LeRobot dataset -> {TRAINING_DATA_DIR / self.episode_path.name}")
+            episode_df = self._create_episode(camera, left_arm, right_arm, hand)
+            validate_columns(episode_df)
+            validate_collection_ids(episode_df)
+            validate_frames_exist(episode_df, ep_path / OUTPUT_DIR)
 
-        if self.save_final:
-            self._save_final(merged)
+            out = ep_path / DATA_CSV
+            episode_df.to_csv(out, index=False)
+            print(f"Wrote {len(episode_df)} rows -> {out}")
 
-    def _merge(self, camera: pd.DataFrame, left_arm: pd.DataFrame,
-               right_arm: pd.DataFrame, hand: pd.DataFrame) -> pd.DataFrame:
+            sessions.append((episode_df, ep_path / OUTPUT_DIR))
+
+            if self.save_final:
+                self._save_final(episode_df, ep_path)
+
+        out_dir = TRAINING_DATA_DIR / self.name
+        convert_to_lerobot(sessions, out_dir, self.instruction)
+        print(f"Wrote LeRobot dataset ({len(sessions)} session(s)) -> {out_dir}")
+
+    def _create_episode(self, camera: pd.DataFrame, left_arm: pd.DataFrame,
+                        right_arm: pd.DataFrame, hand: pd.DataFrame) -> pd.DataFrame:
         """Align every stream to the camera timeline by nearest host_timestamp
         within the same collection"""
         camera, left_arm, right_arm, hand = (
@@ -67,7 +77,6 @@ class Postprocessor:
         for df in (left_arm, right_arm, hand):
             merged = pd.merge_asof(merged, df, on="host_timestamp", by="collection_id", direction="nearest")
 
-        
         merged["frame"] = merged["frame_number"].map(lambda n: f"frame_{int(n):06d}.png")
 
         def without_keys(df: pd.DataFrame) -> list[str]:
@@ -76,17 +85,17 @@ class Postprocessor:
         final_cols = META_COLS + without_keys(hand) + without_keys(left_arm) + without_keys(right_arm)
         return merged[final_cols]
 
-    def _save_final(self, merged: pd.DataFrame) -> None:
-        dst = FINAL_DATA_DIR / self.episode_path.name
+    def _save_final(self, episode_df: pd.DataFrame, ep_path: Path) -> None:
+        dst = FINAL_DATA_DIR / ep_path.name
         if dst.exists():
             shutil.rmtree(dst)
         frames_dst = dst / FRAMES_SUBDIR
         frames_dst.mkdir(parents=True)
 
-        merged.to_csv(dst / DATA_CSV, index=False)
+        episode_df.to_csv(dst / DATA_CSV, index=False)
 
-        png_src = self.episode_path / OUTPUT_DIR
-        for frame_name in merged["frame"].astype(str).unique():
+        png_src = ep_path / OUTPUT_DIR
+        for frame_name in episode_df["frame"].astype(str).unique():
             src = png_src / frame_name
             if src.is_file():
                 shutil.copy2(src, frames_dst / frame_name)
