@@ -46,11 +46,18 @@ class Postprocessor:
         for ep_path in self.episode_paths:
             status_df = load_completed_collections(ep_path)
             compress_frames(ep_path)
-            left_arm, right_arm = load_arms(ep_path, status_df, self.mode)
-            hand = load_hand(ep_path, status_df)
+            left_state, left_action, right_state, right_action = load_arms(
+                ep_path, status_df, self.mode,
+            )
+            hand_state, hand_action = load_hand(ep_path, status_df)
             camera = load_camera(ep_path, status_df)
 
-            episode_df = self._create_episode(camera, left_arm, right_arm, hand)
+            episode_df = self._create_episode(
+                camera,
+                left_state, left_action,
+                right_state, right_action,
+                hand_state, hand_action,
+            )
             validate_columns(episode_df)
             validate_collection_ids(episode_df)
             validate_frames_exist(episode_df, ep_path / OUTPUT_DIR)
@@ -68,21 +75,24 @@ class Postprocessor:
         convert_to_lerobot(sessions, out_dir, self.instruction)
         print(f"Wrote LeRobot dataset ({len(sessions)} session(s)) -> {out_dir}")
 
-    def _create_episode(self, camera: pd.DataFrame, left_arm: pd.DataFrame,
-                        right_arm: pd.DataFrame, hand: pd.DataFrame) -> pd.DataFrame:
+    def _create_episode(self, camera: pd.DataFrame,
+                        left_state: pd.DataFrame, left_action: pd.DataFrame,
+                        right_state: pd.DataFrame, right_action: pd.DataFrame,
+                        hand_state: pd.DataFrame, hand_action: pd.DataFrame) -> pd.DataFrame:
         """Align every stream to the camera timeline by nearest host_timestamp
-        within the same collection"""
-        camera, left_arm, right_arm, hand = (
-            df.sort_values("host_timestamp") for df in (camera, left_arm, right_arm, hand)
+        within the same collection."""
+        streams = (
+            left_state, left_action,
+            right_state, right_action,
+            hand_state, hand_action,
         )
-        merged = camera
-        for df in (left_arm, right_arm, hand):
+        streams = tuple(df.sort_values("host_timestamp") for df in streams)
+        merged = camera.sort_values("host_timestamp")
+        for df in streams:
             merged = pd.merge_asof(merged, df, on="host_timestamp", by="collection_id", direction="nearest")
 
         merged["frame"] = merged["frame_number"].map(lambda n: f"frame_{int(n):06d}.png")
 
-        # Final ordering: meta, then all state cols (hand+arm) then all action
-        # cols, matching what STATE_COLUMNS / ACTION_COLUMNS expect downstream.
         final_cols = META_COLS + STATE_JOINT_COLS + ACTION_JOINT_COLS
         return merged[final_cols]
 

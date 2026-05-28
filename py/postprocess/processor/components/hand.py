@@ -32,15 +32,17 @@ DEX3_STATE_MAP  = {src.format("actual"): dst + STATE_SUFFIX  for src, dst in _DE
 DEX3_ACTION_MAP = {src.format("cmd"):    dst + ACTION_SUFFIX for src, dst in _DEX3_PAIRS}
 
 
-def load_hand(episode_path: Path, status_df: pd.DataFrame) -> pd.DataFrame:
+def load_hand(episode_path: Path, status_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Returns (state_df, action_df). Both share the dex3_hand.csv timeline."""
     path = episode_path / HAND_FILE
     ensure(path.exists(), f"{path} does not exist")
     df = pd.read_csv(path)
 
-    out = df[META_COLS].copy()
-    for src_to_dst in (DEX3_STATE_MAP, DEX3_ACTION_MAP):
+    def _extract(src_to_dst: dict[str, str]) -> pd.DataFrame:
+        out = df[META_COLS].copy()
         for src, dst in src_to_dst.items():
             ensure(src in df.columns, f"Expected column '{src}' in {path}")
             out[dst] = df[src]
+        return filter_completed(out, status_df)
 
-    return filter_completed(out, status_df)
+    return _extract(DEX3_STATE_MAP), _extract(DEX3_ACTION_MAP)
