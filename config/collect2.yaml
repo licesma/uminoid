@@ -1,0 +1,20 @@
+# Config for py/collect/collect_2.py — the temporary Python camera runner
+# (record + WebRTC preview). Edit the source field to switch between cameras;
+# the run command is the same for both: `python3 py/collect/collect_2.py`.
+
+camera:
+  source: "usb"   # "usb" | "zmq"
+
+  # Used when source = "zmq". The G1's MJPEG 1080 bridge runs at this endpoint
+  # (g1_files/realsense_jpeg_1080.py on the Jetson Orin NX).
+  zmq_endpoint: "tcp://192.168.123.164:5556"
+
+server:
+  port: 7860
+
+# WebRTC preview (FastRTC). aiortc caps H.264 at 3 Mbps / VP8 at 1.5 Mbps by
+# default, which makes a 1080 preview soft. Raise the ceiling; congestion
+# control still backs the actual rate down on a constrained link.
+preview:
+  target_bitrate_bps: 10000000   # ceiling
+  start_bitrate_bps:   6000000   # initial target before adaptation
