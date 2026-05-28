@@ -154,7 +154,7 @@ inline constexpr std::array<float, G1_NUM_MOTOR> psi0_damping = []() {
 // Elbows ramp to DISABLED_ARM_ELBOW_Q so the limbs don't dangle at q=0 before
 // arm following kicks in (whether enabled or not). All other arm + wrist
 // slots stay at 0.
-inline constexpr double DISABLED_ARM_ELBOW_Q = 0.2;
+inline constexpr double DISABLED_ARM_ELBOW_Q = 0.4;
 
 inline constexpr std::array<double, G1_NUM_MOTOR> initial_pose = []() {
     std::array<double, G1_NUM_MOTOR> p{};
