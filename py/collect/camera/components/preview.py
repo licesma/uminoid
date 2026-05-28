@@ -25,7 +25,7 @@ class Preview:
         self._roll_deg = 0.0
 
     def push_rgb(self, frame: np.ndarray) -> None:
-        """Publish the latest RGB frame (HxWx3 uint8).
+        """Publish the latest frame (HxWx3 uint8; BGR in this pipeline).
 
         The caller must not mutate `frame` after handing it over; the hub keeps
         the reference rather than copying so the producer hot loop stays cheap.
