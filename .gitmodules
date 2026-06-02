@@ -22,3 +22,6 @@
 [submodule "third_party/Humanoid-Exo-Learning"]
 	path = third_party/Humanoid-Exo-Learning
 	url = git@github.com:hesic73/Humanoid-Exo-Learning.git
+[submodule "third_party/Psi0"]
+	path = third_party/Psi0
+	url = https://github.com/physical-superintelligence-lab/Psi0.git

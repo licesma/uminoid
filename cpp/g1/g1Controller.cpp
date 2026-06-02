@@ -45,12 +45,10 @@ G1Controller::G1Controller(const G1ControllerConfig& config,
       control_dt_(0.002),
       max_target_velocity_(2.0),
       commanded_targets_{},
-      left_measured_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_measured.csv", arm_csv_header(true)) : CsvSaver{}),
-      right_measured_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_measured.csv", arm_csv_header(false)) : CsvSaver{}),
-      left_command_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_command.csv", arm_csv_header(true)) : CsvSaver{}),
-      right_command_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_command.csv", arm_csv_header(false)) : CsvSaver{}),
-      left_arm_csv_(config.left_enabled ? make_csv_saver(config.recording_label, "left_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
-      right_arm_csv_(config.right_enabled ? make_csv_saver(config.recording_label, "right_arm.csv", raw_arm_csv_header()) : CsvSaver{}),
+      left_measured_csv_(make_csv_saver(config.recording_label, "left_measured.csv", arm_csv_header(true))),
+      right_measured_csv_(make_csv_saver(config.recording_label, "right_measured.csv", arm_csv_header(false))),
+      left_command_csv_(make_csv_saver(config.recording_label, "left_command.csv", arm_csv_header(true))),
+      right_command_csv_(make_csv_saver(config.recording_label, "right_command.csv", arm_csv_header(false))),
       left_enabled_(config.left_enabled),
       right_enabled_(config.right_enabled),
       dynamics_(config.dynamics_model),
@@ -79,8 +77,7 @@ void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
                               int collection_id) {
   CsvSaver& measured = from_left ? left_measured_csv_ : right_measured_csv_;
   CsvSaver& cmd = from_left ? left_command_csv_ : right_command_csv_;
-  CsvSaver& arm = from_left ? left_arm_csv_ : right_arm_csv_;
-  if (!measured || !cmd || !arm) return;
+  if (!measured || !cmd) return;
 
   const auto& joints = from_left ? LEFT_ARM_JOINTS : RIGHT_ARM_JOINTS;
   const std::string prefix = std::to_string(collection_id) + "," +
@@ -88,21 +85,15 @@ void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
                              std::to_string(sample.host_timestamp);
   std::ostringstream measured_row;
   std::ostringstream command_row;
-  std::ostringstream arm_row;
   measured_row << prefix;
   command_row << prefix;
-  arm_row << prefix;
-
   for (size_t i = 0; i < ARM_JOINT_COUNT; ++i) {
     const int idx = static_cast<int>(joints[i]);
     measured_row << "," << state.q.at(idx);
     command_row << "," << command.q_target.at(idx);
-    arm_row << "," << sample.data[i];
   }
-
   measured.write_line(measured_row.str());
   cmd.write_line(command_row.str());
-  arm.write_line(arm_row.str());
 }
 
 bool G1Controller::initialize_targets_from_robot_state(
@@ -193,7 +184,13 @@ void G1Controller::process_arm_sample(const ArmLine& sample, bool from_left,
         commanded_targets_.at(joint_index);
   }
 
-  if (record) record_arm(sample, *ms, motor_command_tmp, from_left, collection_id);
+  if (record) {
+    record_arm(sample, *ms, motor_command_tmp, from_left, collection_id);
+    const bool other_disabled = from_left ? !right_enabled_ : !left_enabled_;
+    if (other_disabled) {
+      record_arm(sample, *ms, motor_command_tmp, !from_left, collection_id);
+    }
+  }
   motor_command_buffer_.SetData(motor_command_tmp);
 }
 
