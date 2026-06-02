@@ -8,6 +8,12 @@
 
 #include <array>
 
+// PD gains applied to every Dex3 motor. Uniform across active and static
+// joints — the Dex3-1 has 7 independent motors, so there is no mechanical
+// reason to soften the held ones.
+inline constexpr float Dex3Kp = 1.5f;
+inline constexpr float Dex3Kd = 0.2f;
+
 // Which joints we drive from manus curl. Everything else is static (held).
 inline constexpr std::array<Dex3Joint, 3> Dex3ActiveJoints = {
     Dex3Joint::thumb_palm_bend,

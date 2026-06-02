@@ -30,22 +30,19 @@ inline int wire_slot(Dex3Joint j, Dex3Side side) {
 }
 
 // One-shot setup of a HandCmd_: resizes motor_cmd, writes mode bytes, zeros
-// q/dq/tau, and assigns kp/kd per joint (active vs static gains decided by
-// is_active). The caller is expected to overwrite q every publish.
-inline void prepare_cmd(unitree_hg::msg::dds_::HandCmd_& cmd, Dex3Side side,
-                        float active_kp, float active_kd,
-                        float static_kp, float static_kd) {
+// q/dq/tau, and assigns uniform kp/kd (from dex3_retarget_config) to every
+// joint. The caller is expected to overwrite q every publish.
+inline void prepare_cmd(unitree_hg::msg::dds_::HandCmd_& cmd, Dex3Side side) {
     cmd.motor_cmd().resize(Dex3NumJoints);
     for (int j = 0; j < Dex3NumJoints; ++j) {
-        const auto joint  = static_cast<Dex3Joint>(j);
-        const int  slot   = wire_slot(joint, side);
-        const bool active = is_active(joint);
+        const auto joint = static_cast<Dex3Joint>(j);
+        const int  slot  = wire_slot(joint, side);
         cmd.motor_cmd()[slot].mode(make_mode_byte(uint8_t(slot), 0x01));
         cmd.motor_cmd()[slot].q(0.0f);
         cmd.motor_cmd()[slot].dq(0.0f);
         cmd.motor_cmd()[slot].tau(0.0f);
-        cmd.motor_cmd()[slot].kp(active ? active_kp : static_kp);
-        cmd.motor_cmd()[slot].kd(active ? active_kd : static_kd);
+        cmd.motor_cmd()[slot].kp(Dex3Kp);
+        cmd.motor_cmd()[slot].kd(Dex3Kd);
     }
 }
 
