@@ -35,16 +35,34 @@ float static_hold(Dex3Joint j, Dex3Side side) {
 }  // namespace
 
 SingleDex3Retargeter::SingleDex3Retargeter(Dex3Side side, const ManusBounds& manus_bounds)
-    : side_        (side),
-      manus_bounds_(manus_bounds),
-      controller_  (side)
+    : side_            (side),
+      manus_bounds_    (manus_bounds),
+      controller_      (side),
+      thumb_rotation_q_(static_hold(Dex3Joint::thumb_rotation, side))
 {}
+
+void SingleDex3Retargeter::nudge_thumb_rotation(float delta) {
+    const auto b = (side_ == Dex3Side::Left ? Dex3BoundsLeft
+                                            : Dex3BoundsRight)[Dex3Joint::thumb_rotation];
+    float cur, next;
+    do {
+        cur  = thumb_rotation_q_.load(std::memory_order_relaxed);
+        next = std::clamp(cur + delta, b.low, b.high);
+    } while (!thumb_rotation_q_.compare_exchange_weak(cur, next,
+                                                     std::memory_order_relaxed));
+}
 
 SingleDex3Retargeter::JointPose
 SingleDex3Retargeter::compute_target(const opt<ManusHand>& hand) const {
     JointPose out{};
     for (int i = 0; i < Dex3NumJoints; ++i) {
         const auto j = static_cast<Dex3Joint>(i);
+        if (j == Dex3Joint::thumb_rotation) {
+            // Operator-driven (arrow keys in collect). Static in spirit, but
+            // we read from the live override instead of the constant hold.
+            out[j] = thumb_rotation_q_.load(std::memory_order_relaxed);
+            continue;
+        }
         if (!dex3_helper::is_active(j)) {
             out[j] = static_hold(j, side_);
             continue;

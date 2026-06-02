@@ -35,6 +35,12 @@ protected:
 
     void finish() override;
 
+public:
+    // Right arrow (+1) / left arrow (-1) nudges the right hand's
+    // thumb_rotation target by a fixed step. No-op when the right side is
+    // disabled.
+    void handle_arrow(int dir) override;
+
 private:
     std::optional<SingleDex3Retargeter> left_;
     std::optional<SingleDex3Retargeter> right_;

@@ -146,3 +146,8 @@ void Dex3Retargeter::retarget_step(
 void Dex3Retargeter::finish() {
     hand_csv_.close();
 }
+
+void Dex3Retargeter::handle_arrow(int dir) {
+    constexpr float kThumbRotationStepRad = 0.05f;
+    if (right_) right_->nudge_thumb_rotation(float(dir) * kThumbRotationStepRad);
+}

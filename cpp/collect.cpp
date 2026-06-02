@@ -201,10 +201,22 @@ int main() {
     {
         RawMode raw;
         while (running.load()) {
-            char key = 0;
-            if (read(STDIN_FILENO, &key, 1) <= 0)
-                continue;
+            // Read up to 3 bytes so terminal arrow keys, which arrive as the
+            // CSI sequence ESC '[' ('C'|'D'), can be detected in one read().
+            char buf[8] = {0};
+            int  n = (int)read(STDIN_FILENO, buf, sizeof(buf));
+            if (n <= 0) continue;
 
+            if (n == 3 && buf[0] == 0x1B && buf[1] == '[' &&
+                (buf[2] == 'C' || buf[2] == 'D')) {
+                if (hand) hand->handle_arrow(buf[2] == 'C' ? +1 : -1);
+                continue;
+            }
+            // Drop bare ESC and unrecognized multi-byte sequences so we
+            // don't accidentally feed them to upper_body->handle_key.
+            if (buf[0] == 0x1B || n != 1) continue;
+
+            char key = buf[0];
             if (key == 'q' || key == 'Q' || key == 3 /* Ctrl+C */) {
                 ui::complete_current(_collection_id.load());
                 running.store(false);
