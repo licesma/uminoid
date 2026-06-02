@@ -34,6 +34,11 @@ public:
         const std::function<bool()>& pause        = [] { return false; }
     );
 
+    // Called from the input thread when the operator presses an arrow key.
+    // dir is +1 for right, -1 for left. Default no-op; hands that expose a
+    // manual joint override (e.g. dex3 thumb rotation) override this.
+    virtual void handle_arrow(int /*dir*/) {}
+
 protected:
     // Per-tick hook: called once per Manus pose. left/right are nullopt when
     // that side has no fresh data. Subclasses retarget, send to hardware,

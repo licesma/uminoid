@@ -5,6 +5,8 @@
 #include "manus/manus_hand.hpp"
 #include "utils/type.hpp"
 
+#include <atomic>
+
 /**
  * Retargets manus glove curls onto ONE Dex3-1 hand.
  *
@@ -25,6 +27,11 @@ public:
 
     void step(const opt<ManusHand>& hand);
 
+    // Adjusts the thumb_rotation target by delta rad, clamped to URDF bounds.
+    // thumb_rotation is a static-hold joint (not driven from the glove), so
+    // this is the operator's manual override knob for it. Thread-safe.
+    void nudge_thumb_rotation(float delta);
+
     // Csv accessors (delegate to the controller).
     bool                        is_ready  () const { return controller_.is_ready();   }
     JointPose                   last_cmd_q() const { return controller_.last_cmd_q(); }
@@ -36,4 +43,5 @@ private:
     Dex3Side             side_;
     ManusBounds          manus_bounds_;
     SingleDex3Controller controller_;
+    std::atomic<float>   thumb_rotation_q_;
 };
