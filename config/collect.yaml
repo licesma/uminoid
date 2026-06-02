@@ -1,0 +1,34 @@
+relay: "127.0.0.1:5000"
+# The DDS network interface is derived from this: "lo" when true, the wired NIC
+# when false (see collect.cpp). It is not configured separately.
+is_simulation: true
+
+dynamics:
+  model: "psi0"   # "baseline" | "psi0"
+
+upper_body:
+  enabled: true
+  source: "g1"   # "mocap" | "g1" 
+  left_enabled:  false
+  right_enabled: true
+  baudrate: 1000000
+
+hand:
+  enabled: false
+  source: "dex3"   # "inspire_usb" | "inspire_g1" | "dex3"   
+  left:
+    enabled: true
+  right:
+    enabled: true
+
+camera:
+  enabled: false
+  source: "zmq"   # "zmq" |  "usb" 
+
+preview:
+  bind_host: "127.0.0.1"           
+  port: 8080
+  width: 320
+  height: 240
+  jpeg_quality: 40
+  max_fps: 10

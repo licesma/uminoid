@@ -5,3 +5,7 @@ dynamixel-sdk
 torch==2.3.1
 numpy
 pyzmq
+opencv-python
+fastrtc
+imageio[ffmpeg]
+datasets

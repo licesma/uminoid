@@ -37,7 +37,7 @@ usb-FTDI_USB__-__Serial_Converter_FT94EJO0-if00-port0 -> ../../ttyUSB0
 The serial is the part between the last `_` and `-if00` — e.g. `FT94EJO0`. Then register it:
 
 ```bash
-sudo $(which python) py/setup_arm_udev.py left_arm <serial>
+sudo $(which python) py/calibrate/setup_dynamixel_udev.py left_arm <serial>
 ```
 
 Repeat for the right arm. Verify both:

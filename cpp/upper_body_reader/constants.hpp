@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <array>
+#include <string>
 
 constexpr int ARM_JOINT_COUNT = 7;
 constexpr int JOINT_COUNT = 14;
@@ -53,7 +54,30 @@ constexpr double ENCODER_PRECISION_RAD = ENCODER_PRECISION * 2.0 * M_PI;
     ExoIndex::RightShoulderYaw, 
     ExoIndex::RightElbow, 
     ExoIndex::RightWristRoll, 
-    ExoIndex::RightWristPitch, 
+    ExoIndex::RightWristPitch,
     ExoIndex::RightWristYaw,
   };
+
+// Bare arm joint names, in encoder order. MUST match ARM_JOINTS in py/joints.py.
+inline constexpr std::array<const char*, ARM_JOINT_COUNT> ARM_JOINT_NAMES = {
+    "shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow",
+    "wrist_roll",     "wrist_pitch",   "wrist_yaw",
+};
+
+// Header for an angle CSV (measured/command): named per-joint columns matching
+// the Python side, e.g. "left_shoulder_pitch_joint".
+inline std::string arm_csv_header(bool from_left) {
+  const std::string side = from_left ? "left_" : "right_";
+  std::string h = "collection_id,timestamp,host_timestamp";
+  for (const auto* name : ARM_JOINT_NAMES) h += "," + side + name + "_joint";
+  return h;
+}
+
+// Header for the raw bit CSV (arm.csv): generic joint_0..joint_N columns, since
+// the values are encoder bits, not joint angles.
+inline std::string raw_arm_csv_header() {
+  std::string h = "collection_id,timestamp,host_timestamp";
+  for (int i = 0; i < ARM_JOINT_COUNT; ++i) h += ",joint_" + std::to_string(i);
+  return h;
+}
   

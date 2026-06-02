@@ -1,0 +1,10 @@
+# Per-machine hardware wiring: serial port paths for the Dynamixel arms and the
+# Unitree hand ids. Split out from collect_config.yaml because these identify
+# physical devices on this specific machine, not behavior.
+arms:
+  left:  "/dev/left_arm"
+  right: "/dev/right_arm"
+
+hands:
+  left_id:  1   # only used when hand source == "inspire_usb"
+  right_id: 2   # only used when hand source == "inspire_usb"

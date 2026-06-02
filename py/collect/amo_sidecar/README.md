@@ -17,14 +17,14 @@ Python-side glue for running the AMO whole-body policy
 ## Running the sidecar
 
 ```bash
-cd py/amo_sidecar
+cd py/collect/amo_sidecar
 python amo_sidecar.py \
   --state-endpoint  tcp://127.0.0.1:5555 \
   --action-endpoint tcp://127.0.0.1:5556 \
   --device cpu
 ```
 
-Defaults resolve model paths to `../third_party/AMO/`. Sidecar idles until the
+Defaults resolve model paths to `../../../third_party/AMO/`. Sidecar idles until the
 first state frame arrives; SIGINT shuts it down cleanly.
 
 ## Setup
@@ -34,7 +34,7 @@ Use AMO's environment so versions match:
 ```bash
 conda create -n amo python=3.8
 conda activate amo
-pip install -r ../third_party/AMO/requirements.txt
+pip install -r ../../../third_party/AMO/requirements.txt
 ```
 
 ## Status

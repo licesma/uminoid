@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import yaml
 from InquirerPy import inquirer
 
-from joint_reader_constants import ENCODER_PRECISION_RAD
-from joints import ARM_JOINTS
+from utils.joint_reader_constants import ENCODER_PRECISION_RAD
+from utils.joints import ARM_JOINTS
 from read_dynamixel import BAUDRATE, DXL_IDS, UNAVAILABLE_VALUE, DynamixelPortReader, read_with_fallback
 from utils.convert_to_radian import convert_to_radian
 

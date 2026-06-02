@@ -9,30 +9,26 @@
 #include <string>
 
 #include "../utils/csv_saver.hpp"
-#include "../utils/metadata_loader.hpp"
+#include "upper_body_reader/arm_reader/arm_angle_converter.hpp"
 #include "upper_body_reader/arm_reader/skeleton_arm.hpp"
 #include "upper_body_reader/constants.hpp"
-#include "../utils/bounds_loader.hpp"
 #include "amo/amo_bridge.hpp"
+#include "dynamics/dynamics.hpp"
 #include "g1Robot.hpp"
-
-#ifndef READER_BOUNDS_PATH
-#define READER_BOUNDS_PATH \
-  "../upper_body_reader/arm_reader/as5600/as5600_bounds.yaml"
-#endif
 
 #ifndef DYNAMIXEL_BOUNDS_PATH
 #define DYNAMIXEL_BOUNDS_PATH \
   "../upper_body_reader/arm_reader/dynamixel/dynamixel_bounds.yaml"
 #endif
 
-struct G1JointReading {
-  G1JointIndex joint;
-  double netAngle;
-  bool is_valid;
+struct G1ControllerConfig {
+  std::string network_interface;
+  bool is_simulation = false;
+  std::string recording_label;  // empty disables CSV recording
+  bool left_enabled = false;
+  bool right_enabled = false;
+  DynamicsModel dynamics_model = DynamicsModel::Baseline;
 };
-
-using ArmReadings = std::array<G1JointReading, ARM_JOINT_COUNT>;
 
 class G1Controller : public G1Robot {
  private:
@@ -43,12 +39,18 @@ class G1Controller : public G1Robot {
   CsvSaver right_measured_csv_;
   CsvSaver left_command_csv_;
   CsvSaver right_command_csv_;
+  CsvSaver left_arm_csv_;
+  CsvSaver right_arm_csv_;
   std::mutex update_mutex_;
-  JointsReadingMetadata metadata_;
-  JointBounds bounds_;
-  JointBounds reader_bounds_;
+  ArmAngleConverter converter_;
   bool left_enabled_;
   bool right_enabled_;
+  Dynamics dynamics_;
+
+  // Builds a MotorCommand from the given per-joint targets, filling kp/kd and
+  // the feed-forward torque from the active dynamics model.
+  MotorCommand make_motor_command(
+      const std::array<double, G1_NUM_MOTOR>& commanded_targets) const;
 
   // AMO sidecar plumbing.
   AmoBridge  amo_bridge_;
@@ -72,8 +74,6 @@ class G1Controller : public G1Robot {
   // over a short window so the very first AMO tick is not a position step.
   std::chrono::steady_clock::time_point amo_handoff_time_{};
 
-  ArmReadings decode_arm(const ArmLine& sample, bool from_left) const;
-  double toG1Angle(G1JointReading reading);
   void record_arm(const ArmLine& sample, const MotorState& state,
                   const MotorCommand& command, bool from_left,
                   int collection_id);
@@ -88,11 +88,7 @@ class G1Controller : public G1Robot {
   void on_state_update() override;
 
  public:
-  G1Controller(std::string networkInterface, bool isSimulation,
-               const JointsReadingMetadata& metadata,
-               const JointBounds& reader_bounds,
-               const std::string& recording_label,
-               bool left_enabled, bool right_enabled,
+  G1Controller(const G1ControllerConfig& config,
                const std::function<void(const std::string&)>& raise_error);
   ~G1Controller() override = default;
 

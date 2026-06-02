@@ -6,4 +6,6 @@ cpp/.cache/
 __pycache__/
 data/
 final_data/
+training_data/
+training_data_reference/
 g1_files
