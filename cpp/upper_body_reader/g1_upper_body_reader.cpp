@@ -37,6 +37,7 @@ void G1UpperBodyReader::collect_loop(
     const std::function<bool()>& stop,
     const std::function<bool()>& pause) {
   if (!controller_.initialize_targets_from_robot_state(stop)) return;
+  controller_.set_recording_context(collection_id, pause);
 
   std::thread left_thread(&G1UpperBodyReader::arm_listener_loop, this,
                           std::ref(left_), true, std::cref(collection_id),
