@@ -1,0 +1,9 @@
+/* Expand source editor */
+.markdown-source-view.mod-cm6 .cm-content {
+  max-width: none !important;
+}
+
+/* Expand preview mode */
+.markdown-preview-view.is-readable-line-width {
+  max-width: none !important;
+}

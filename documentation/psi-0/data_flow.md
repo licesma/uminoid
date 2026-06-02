@@ -24,30 +24,36 @@ to a per-episode directory `<task>/episode_<N>/`.
 One JSON object per line, one line per camera frame. 
 Built by `RobotDataWorker.get_robot_data` (`worker.py:429`) 
 
-| Field | Type | Source / meaning |
-|---|---|---|
-| `time` | float | `time.time()` when the row is written |
-| `robot_type` | str | `"g1"` or `"h1"` |
-| `states.arm_state` | float[**14**] | Both-arm joint angles, encoder/SDK frame |
-| `states.leg_state` | float[**15**] | Both-leg joint angles + waist |
-| `states.hand_state` | float[**14**] | Dex3 hand joints (7 L + 7 R) |
-| `states.hand_pressure_state` | dict[18 sensors × ≤4 readings] | Tactile, formatted by `format_pressure_data` |
-| `states.imu.quaternion` | float[4] | Body IMU |
-| `states.imu.accelerometer` | float[3] | Body IMU |
-| `states.imu.gyroscope` | float[3] | Body IMU |
-| `states.imu.rpy` | float[3] | Body IMU |
-| `states.odometry.position` | float[3] | Base odometry |
-| `states.odometry.velocity` | float[3] | Base odometry |
-| `states.odometry.rpy` | float[3] | Base odometry |
-| `states.odometry.quat` | float[4] | Base odometry |
-| `actions` | null | Placeholder — filled in by Stage 2 merger |
-| `image` | str | `"color/frame_NNNNNN.jpg"` (relative path) |
-| `depth` | str | `"depth/frame_NNNNNN.npy.lzma"` (relative path) |
+**General**
+- `time` (float), time when the row is written
+- `robot_type` (str)
+-  actions
+- image
+- depth
+**States**
+**IMU**
+**Odometry**
 
-Total raw float count in the shared-memory snapshot for G1:
-`15 + 14 + 14 + 4 + 3 + 3 + 3 + 3 + 3 + 3 + 4 + 216 = 285` doubles.
-(`HAND_PRESS_SIZE = 216` = 18 sensors × 12 raw readings; the writer down-samples to the
-"usable readings" structure shown above.)
+
+| Field                        | Type          | Source / meaning                             |
+| ---------------------------- | ------------- | -------------------------------------------- |
+| `time`                       | float         | `time.time()` when the row is written        |
+| `robot_type`                 | str           | `"g1"` or `"h1"`                             |
+| `states.arm_state`           | float[**14**] | Both-arm joint angles, encoder/SDK frame     |
+| `states.leg_state`           | float[**15**] | Both-leg joint angles + waist                |
+| `states.hand_state`          | float[**14**] | Dex3 hand joints (7 L + 7 R)                 |
+| `states.hand_pressure_state` | dict          | Tactile, formatted by `format_pressure_data` |
+| `states.imu.quaternion`      | float[4]      | Body IMU                                     |
+| `states.imu.accelerometer`   | float[3]      | Body IMU                                     |
+| `states.imu.gyroscope`       | float[3]      | Body IMU                                     |
+| `states.imu.rpy`             | float[3]      | Body IMU                                     |
+| `states.odometry.position`   | float[3]      | Base odometry                                |
+| `states.odometry.velocity`   | float[3]      | Base odometry                                |
+| `states.odometry.rpy`        | float[3]      | Base odometry                                |
+| `states.odometry.quat`       | float[4]      | Base odometry                                |
+| `actions`                    | null          | Placeholder — filled in by Stage 2 merger    |
+| `image`                      | str           | `"color/frame_#.jpg"` (rel path)             |
+| `depth`                      | str           | `"depth/frame_#.npy.lzma"` (rel path)        |
 
 ## 1B — `RobotTaskmaster` (actions / IK)
 
@@ -57,24 +63,24 @@ calls `IKDataWriter.write_data` (`writers.py:70`), appending one JSON line to
 
 ### `ik_data.jsonl`
 
-| Field          | Type              | Size             | Meaning                                                 |
-| -------------- | ----------------- | ---------------- | ------------------------------------------------------- |
-| `right_angles` | list[float]       | 7 (or 12 for H1) | Right-hand joint command                                |
-| `left_angles`  | list[float]       | 7 (or 12 for H1) | Left-hand joint command                                 |
-| `armtime`      | float             | —                | Timestamp used to align with `robot_data` `time`        |
-| `iktime`       | float             | —                | IK solver wall-clock                                    |
-| `sol_q`        | list[float]       | **29**           | Full body solution: `[0:15]` legs+waist, `[15:29]` arms |
-| `tau_ff`       | list[float]       | 29               | Feed-forward torque                                     |
-| `head_rmat`    | list[list[float]] | 3 × 3            | Head rotation matrix from VR headset                    |
-| `left_pose`    | list[float]       | 6 or 7           | Left wrist target pose                                  |
-| `right_pose`   | list[float]       | 6 or 7           | Right wrist target pose                                 |
-| `torso_height` | float             | 1                | Commanded torso height                                  |
-| `torso_rpy`    | list[float]       | 3                | Commanded torso roll/pitch/yaw                          |
-| `torso_vx`     | float             | 1                | Commanded base x-velocity                               |
-| `torso_vy`     | float             | 1                | Commanded base y-velocity                               |
-| `torso_vyaw`   | float             | 1                | Commanded base yaw rate                                 |
-| `torso_dyaw`   | float             | 1                | Yaw-delta term                                          |
-| `target_yaw`   | float             | 1                | Absolute yaw target                                     |
+| Field          | Type              | Size   | Meaning                                                 |
+| -------------- | ----------------- | ------ | ------------------------------------------------------- |
+| `right_angles` | list[float]       | 7      | Right-hand joint command                                |
+| `left_angles`  | list[float]       | 7      | Left-hand joint command                                 |
+| `armtime`      | float             | —      | Timestamp used to align with `robot_data` `time`        |
+| `iktime`       | float             | —      | IK solver wall-clock                                    |
+| `sol_q`        | list[float]       | **29** | Full body solution: `[0:15]` legs+waist, `[15:29]` arms |
+| `tau_ff`       | list[float]       | 29     | Feed-forward torque                                     |
+| `head_rmat`    | list[list[float]] | 3 × 3  | Head rotation matrix from VR headset                    |
+| `left_pose`    | list[float]       | 6 or 7 | Left wrist target pose                                  |
+| `right_pose`   | list[float]       | 6 or 7 | Right wrist target pose                                 |
+| `torso_height` | float             | 1      | Commanded torso height                                  |
+| `torso_rpy`    | list[float]       | 3      | Commanded torso roll/pitch/yaw                          |
+| `torso_vx`     | float             | 1      | Commanded base x-velocity                               |
+| `torso_vy`     | float             | 1      | Commanded base y-velocity                               |
+| `torso_vyaw`   | float             | 1      | Commanded base yaw rate                                 |
+| `torso_dyaw`   | float             | 1      | Yaw-delta term                                          |
+| `target_yaw`   | float             | 1      | Absolute yaw target                                     |
 
 ## 1C — Episode dir layout at end of Stage 1
 
