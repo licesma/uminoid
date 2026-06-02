@@ -25,3 +25,13 @@ struct MotorState {
   std::array<float, G1_NUM_MOTOR> q = {};
   std::array<float, G1_NUM_MOTOR> dq = {};
 };
+
+// Subset of rt/odommodestate (firmware base-link estimator) we consume.
+struct OdomState {
+  uint64_t host_timestamp = 0;
+  std::array<float, 4> quat = {};
+  std::array<float, 3> rpy = {};
+  std::array<float, 3> position = {};
+  std::array<float, 3> velocity = {};
+  float yaw_speed = 0.0f;
+};

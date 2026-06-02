@@ -39,6 +39,8 @@ class G1Controller : public G1Robot {
   CsvSaver right_measured_csv_;
   CsvSaver left_command_csv_;
   CsvSaver right_command_csv_;
+  CsvSaver base_state_csv_;
+  CsvSaver base_command_csv_;
   std::mutex update_mutex_;
   ArmAngleConverter converter_;
   bool left_enabled_;
@@ -67,6 +69,12 @@ class G1Controller : public G1Robot {
                   const MotorCommand& command, bool from_left,
                   int collection_id);
 
+
+  void record_base(int collection_id);
+
+  std::function<int()>  collection_id_provider_ = [] { return -1; };
+  std::function<bool()> is_paused_              = [] { return true; };
+
   // Called from LowStateHandler at ~500 Hz via the on_state_update() override.
   void publish_amo_state();
 
@@ -85,6 +93,9 @@ class G1Controller : public G1Robot {
       const std::function<bool()>& stop_requested);
   void process_arm_sample(const ArmLine& sample, bool from_left,
                           int collection_id, bool record);
+
+  void set_recording_context(std::function<int()> collection_id,
+                             std::function<bool()> is_paused);
 
   void handle_key(char key);
 };
