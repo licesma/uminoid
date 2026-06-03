@@ -10,15 +10,8 @@ namespace {
 
 // ---- Tunables (chosen, not hardware-defined) ----
 //
-// Gains for the active palm-bend joints (Dex3ActiveJoints) — the ones we
-// actually drive from manus curls.
-constexpr float kActiveKp = 1.5f;
-constexpr float kActiveKd = 0.2f;
-//
-// Gains for the static joints. Lower kp + relatively higher kd resists
-// drift but doesn't fight tendon coupling when the palm bend moves.
-constexpr float kStaticKp = 0.6f;
-constexpr float kStaticKd = 0.3f;
+// PD gains live in dex3_retarget_config.hpp (Dex3Kp, Dex3Kd) and are applied
+// uniformly to every motor by dex3_helper::prepare_cmd.
 //
 // Slew limit on commanded q (rad/s), per joint per send_slewed().
 constexpr float kRampRate = 0.6f;
@@ -46,7 +39,7 @@ SingleDex3Controller::SingleDex3Controller(Dex3Side side) : side_(side) {
         unitree::robot::ChannelPublisher<unitree_hg::msg::dds_::HandCmd_>>(cmd_topic_);
     cmd_pub_->InitChannel();
 
-    dex3_helper::prepare_cmd(cmd_, side_, kActiveKp, kActiveKd, kStaticKp, kStaticKd);
+    dex3_helper::prepare_cmd(cmd_, side_);
 }
 
 int SingleDex3Controller::wire_slot(Dex3Joint j) const {

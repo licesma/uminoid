@@ -22,9 +22,9 @@
  * is hidden behind Dex3WireSlot{Left,Right}.
  *
  * Does NOT call ChannelFactory::Init — the parent (Dex3Retargeter) does
- * that once for both sides. Tunables (kp/kd, ramp rate) live in this
- * file's .cpp; hardware facts (joint limits, wire slots) come from
- * dex3_values.hpp.
+ * that once for both sides. PD gains live in dex3_retarget_config.hpp;
+ * the ramp rate lives in this file's .cpp; hardware facts (joint limits,
+ * wire slots) come from dex3_values.hpp.
  */
 class SingleDex3Controller {
 public:

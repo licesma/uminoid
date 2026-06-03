@@ -11,6 +11,7 @@
 static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
+static const std::string ODOM_STATE_TOPIC = "rt/odommodestate";
 
 G1Robot::G1Robot(std::string networkInterface, bool isSimulation)
     : mode_pr_(Mode::PR),
@@ -34,12 +35,28 @@ G1Robot::G1Robot(std::string networkInterface, bool isSimulation)
   lowstate_subscriber_->InitChannel(std::bind(&G1Robot::LowStateHandler, this, std::placeholders::_1), 1);
   imutorso_subscriber_.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
   imutorso_subscriber_->InitChannel(std::bind(&G1Robot::imuTorsoHandler, this, std::placeholders::_1), 1);
+  odom_subscriber_.reset(
+      new ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>(ODOM_STATE_TOPIC));
+  odom_subscriber_->InitChannel(
+      std::bind(&G1Robot::OdomStateHandler, this, std::placeholders::_1), 1);
   command_writer_ptr_ = CreateRecurrentThreadEx("command_writer", UT_CPU_ID_NONE, 2000, &G1Robot::LowCommandWriter, this);
 }
 
 void G1Robot::imuTorsoHandler(const void *message) {
   IMUState_ imu_torso = *(const IMUState_ *)message;
   (void)imu_torso;
+}
+
+void G1Robot::OdomStateHandler(const void *message) {
+  const auto& odom = *reinterpret_cast<const unitree_go::msg::dds_::SportModeState_*>(message);
+  OdomState os;
+  os.host_timestamp = Time::ts();
+  os.quat = odom.imu_state().quaternion();
+  os.rpy = odom.imu_state().rpy();
+  os.position = odom.position();
+  os.velocity = odom.velocity();
+  os.yaw_speed = odom.yaw_speed();
+  odom_state_buffer_.SetData(os);
 }
 
 void G1Robot::LowStateHandler(const void *message) {

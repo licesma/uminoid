@@ -4,6 +4,7 @@
 #include "g1/model/g1Values.hpp"
 #include "utils/circular_math.hpp"
 #include "utils/repo_constants.hpp"
+#include "utils/time.hpp"
 
 #include <algorithm>
 #include <array>
@@ -49,6 +50,10 @@ G1Controller::G1Controller(const G1ControllerConfig& config,
       right_measured_csv_(make_csv_saver(config.recording_label, "right_measured.csv", arm_csv_header(false))),
       left_command_csv_(make_csv_saver(config.recording_label, "left_command.csv", arm_csv_header(true))),
       right_command_csv_(make_csv_saver(config.recording_label, "right_command.csv", arm_csv_header(false))),
+      base_state_csv_(make_csv_saver(config.recording_label, "base_state.csv",
+          "collection_id,host_timestamp,roll,pitch,yaw,height,vx,vy,vyaw")),
+      base_command_csv_(make_csv_saver(config.recording_label, "base_command.csv",
+          "collection_id,host_timestamp,torso_roll,torso_pitch,torso_yaw,height,vx,vy,vyaw,yaw_target")),
       left_enabled_(config.left_enabled),
       right_enabled_(config.right_enabled),
       dynamics_(config.dynamics_model),
@@ -94,6 +99,42 @@ void G1Controller::record_arm(const ArmLine& sample, const MotorState& state,
   }
   measured.write_line(measured_row.str());
   cmd.write_line(command_row.str());
+}
+
+void G1Controller::record_base(int collection_id) {
+  if (!base_state_csv_ || !base_command_csv_) return;
+  const std::shared_ptr<const OdomState> odom = odom_state_buffer_.GetData();
+
+  if (!odom) return;
+
+  AmoCommand cmd_snapshot;
+  {
+    std::lock_guard<std::mutex> lock(amo_command_mutex_);
+    cmd_snapshot = amo_command_;
+  }
+
+  std::ostringstream state_row;
+  state_row << collection_id << ',' << odom->host_timestamp << ','
+            << odom->rpy[0] << ',' << odom->rpy[1] << ',' << odom->rpy[2] << ','
+            << odom->position[2] << ','
+            << odom->velocity[0] << ',' << odom->velocity[1] << ','
+            << odom->yaw_speed;
+  base_state_csv_.write_line(state_row.str());
+
+  std::ostringstream cmd_row;
+  cmd_row << collection_id << ',' << Time::ts() << ','
+          << cmd_snapshot.torso_roll << ',' << cmd_snapshot.torso_pitch << ','
+          << cmd_snapshot.torso_yaw << ',' << cmd_snapshot.height << ','
+          << cmd_snapshot.vx << ',' << cmd_snapshot.vy << ','
+          << 0.0 << ','                 // vyaw placeholder, 
+          << cmd_snapshot.yaw_target;
+  base_command_csv_.write_line(cmd_row.str());
+}
+
+void G1Controller::set_recording_context(
+    std::function<int()> collection_id, std::function<bool()> is_paused) {
+  collection_id_provider_ = std::move(collection_id);
+  is_paused_ = std::move(is_paused);
 }
 
 bool G1Controller::initialize_targets_from_robot_state(
@@ -238,13 +279,20 @@ void G1Controller::apply_amo_action(const AmoAction& action) {
   const double alpha =
       std::clamp(t_since_handoff / AMO_BLEND_DURATION_S, 0.0, 1.0);
 
-  std::lock_guard<std::mutex> lock(update_mutex_);
-  for (size_t i = 0; i < AMO_ACTION.size(); ++i) {
-    const int idx = static_cast<int>(AMO_ACTION[i]);
-    commanded_targets_[idx] =
-        (1.0 - alpha) * initial_pose[idx] + alpha * action.q_target[i];
+  {
+    std::lock_guard<std::mutex> lock(update_mutex_);
+    for (size_t i = 0; i < AMO_ACTION.size(); ++i) {
+      const int idx = static_cast<int>(AMO_ACTION[i]);
+      commanded_targets_[idx] =
+          (1.0 - alpha) * initial_pose[idx] + alpha * action.q_target[i];
+    }
+    motor_command_buffer_.SetData(make_motor_command(commanded_targets_));
   }
-  motor_command_buffer_.SetData(make_motor_command(commanded_targets_));
+
+  if (arm_following_started_.load(std::memory_order_relaxed) &&
+      !is_paused_()) {
+    record_base(collection_id_provider_());
+  }
 }
 
 void G1Controller::on_state_update() {
