@@ -91,7 +91,7 @@ class Postprocessor:
         for df in streams:
             merged = pd.merge_asof(merged, df, on="host_timestamp", by="collection_id", direction="nearest")
 
-        merged["frame"] = merged["frame_number"].map(lambda n: f"frame_{int(n):06d}.png")
+        merged["frame"] = merged["frame_number"].map(lambda n: f"frame_{int(n):06d}.jpg")
 
         final_cols = META_COLS + STATE_JOINT_COLS + ACTION_JOINT_COLS
         return merged[final_cols]
