@@ -40,6 +40,7 @@ class TrainSection:
     lr_scheduler_type: str = "cosine"
     weight_decay: float = 1e-6
     betas: tuple[float, float] = (0.95, 0.999)
+    resume_from_checkpoint: str | None = None
 
 
 @dataclass
@@ -100,6 +101,9 @@ class FinetuneConfig:
     config_name: str = "finetune_real_psi0_config"  # upstream registered config
     seed: int = 292285
     experiment: str = ""  # required; rendered as `--exp=...` for upstream
+    # Reuse a prior run's timestamp so a resumed run writes to the same folder
+    # (the run dir name ends in this). Leave None for a fresh run.
+    timestamp: str | None = None
 
     train: TrainSection = field(default_factory=TrainSection)
     data: DataSection = field(default_factory=DataSection)
@@ -130,6 +134,8 @@ class FinetuneConfig:
             f"--seed={self.seed}",
             f"--exp={self.experiment}",
         ]
+        if self.timestamp is not None:
+            a.append(f"--timestamp={self.timestamp}")
 
         t = self.train
         a += [
@@ -153,6 +159,8 @@ class FinetuneConfig:
             str(t.betas[0]),
             str(t.betas[1]),
         ]
+        if t.resume_from_checkpoint is not None:
+            a.append(f"--train.resume_from_checkpoint={t.resume_from_checkpoint}")
 
         a += [f"--log.report_to={self.log.report_to}"]
 
