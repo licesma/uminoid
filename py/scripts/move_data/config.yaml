@@ -1,7 +1,4 @@
-# Path to the uminoid repository on each machine.
-# Used as the transfer destination root: <repo>/<data|training_data>/<folder>.
-hosts:
-  yue: "~/repos/uminoid"
-  gvl_1: "~/repos/uminoid"
-  gvl_2: "~/repos/uminoid"
-  jiageng: "~/repos/uminoid"
+destinations:
+  "yue:uminoid": "yue:~/repos/uminoid"
+  "jiageng:uminoid": "jiageng:~/repos/uminoid"
+  "jiageng:sicheng": "jiageng:~/hsc/Humanoid-Exo-Learning"

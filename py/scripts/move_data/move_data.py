@@ -8,8 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import DATA_DIR, TRAINING_DATA_DIR
 
 import prompts
-from config_loader import load_host_repos
-from ssh_hosts import reachable_destinations
+from config_loader import selectable_destinations
 from transfer import rsync_folder
 
 LOCAL_DIRS = {
@@ -32,14 +31,13 @@ def main() -> int:
         return 1
     folder = prompts.select_folder(kind, folders)
 
-    host_repos = load_host_repos()
-    destinations = reachable_destinations(list(host_repos))
+    destinations = selectable_destinations()
     if not destinations:
-        print("No reachable destination hosts found in ~/.ssh/config", file=sys.stderr)
+        print("No destinations configured in config.yaml", file=sys.stderr)
         return 1
-    host = prompts.select_destination(destinations)
+    label = prompts.select_destination(list(destinations))
 
-    return rsync_folder(source_dir / folder, host, host_repos[host], kind)
+    return rsync_folder(source_dir / folder, destinations[label], kind)
 
 
 if __name__ == "__main__":

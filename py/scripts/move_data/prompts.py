@@ -19,6 +19,6 @@ def select_folder(kind: str, folders: list[str]) -> str:
 
 def select_destination(destinations: list[str]) -> str:
     return inquirer.select(
-        message="Select the destination machine:",
+        message="Select the destination:",
         choices=destinations,
     ).execute()
