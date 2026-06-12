@@ -1,6 +1,6 @@
 from InquirerPy import inquirer
 
-DATA_KINDS = ["data", "training_data"]
+DATA_KINDS = ["data", "training_data", ".runs"]
 
 
 def select_data_kind() -> str:
