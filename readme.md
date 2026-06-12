@@ -67,7 +67,7 @@ python py/get_inspire_id.py ttyUSB0   # verify
 ### Python environment
 
 ```bash
-conda create -n uminoid_exo python=3.11 && conda run -n uminoid_exo pip install -r requirements.txt
+conda create -n uminoid python=3.11 && conda run -n uminoid pip install -r requirements.txt
 ```
 
 ## Handle C++
