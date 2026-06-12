@@ -41,13 +41,13 @@ right_elbow:
 right_shoulder_pitch:
   correct_boundary: upper
   direction_aligned: false
-  lower: 1.2440584189752553
-  upper: 0.7163690279425943
+  lower: -1.8913983114629955
+  upper: -2.4175537217077707
 right_shoulder_roll:
   correct_boundary: lower
   direction_aligned: true
-  lower: 0.08743690490948142
-  upper: 2.814854745770152
+  lower: 1.662835174068035
+  upper: -1.9619614277057351
 right_shoulder_yaw:
   correct_boundary: lower
   direction_aligned: false
