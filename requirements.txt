@@ -8,4 +8,4 @@ pyzmq
 opencv-python
 fastrtc
 imageio[ffmpeg]
-datasets
+datasets==3.6.0  # MUST match Psi0 training env (.venv-psi); datasets>=4.0 writes the 'List' feature type that the trainer's pinned datasets 3.6.0 cannot read
