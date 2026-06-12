@@ -1,10 +1,10 @@
 """Entry point: render a task config to CLI args and exec upstream Psi-0's train.py via torchrun.
 
 Usage:
-    python -m py.train.run <task_name>
+    python py/train/run.py <task_name>
 
 Example:
-    python -m py.train.run pick_plum_may_28
+    python py/train/run.py pick_plum_may_28
 
 Prerequisites:
     - PSI_HOME exported (or `set -a; source .env; set +a`)
@@ -18,6 +18,8 @@ import resource
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root, so `py` package is importable when run directly
 
 from py.paths import ROOT_DIR
 from py.train.tasks import TASKS
@@ -52,7 +54,7 @@ def _raise_nofile_limit(target: int = 65535) -> None:
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print(f"Usage: python -m py.train.run <task>")
+        print(f"Usage: python py/train/run.py <task>")
         print(f"Available tasks: {', '.join(sorted(TASKS))}")
         return 2
 
