@@ -50,6 +50,7 @@ class DataSection:
     root_dir: str = "training_data"
     train_repo_ids: str = ""  # required, set per-task; matches a subdir under root_dir
 
+    train_fraction: float | None = None
     repack_pad_action_dim: int = 36
     repack_pad_state_dim: int = 36
 
@@ -168,6 +169,10 @@ class FinetuneConfig:
         a += [
             f"--data.root_dir={d.root_dir}",
             f"--data.train_repo_ids={d.train_repo_ids}",
+        ]
+        if d.train_fraction is not None:
+            a.append(f"--data.train_fraction={d.train_fraction}")
+        a += [
             f"--data.transform.repack.pad-action-dim={d.repack_pad_action_dim}",
             f"--data.transform.repack.pad-state-dim={d.repack_pad_state_dim}",
             f"--data.transform.field.stat-path={d.stat_path}",
