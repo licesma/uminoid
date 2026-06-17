@@ -1,14 +1,4 @@
 """Entry point: render a task config to CLI args and exec upstream Psi-0's train.py via torchrun.
-
-Usage:
-    python py/train/run.py <task_name>
-
-Example:
-    python py/train/run.py pick_plum_may_28
-
-Prerequisites:
-    - PSI_HOME exported (or `set -a; source .env; set +a`)
-    - .venv-psi exists at repo root and contains torch + Psi-0 deps
 """
 
 from __future__ import annotations
@@ -20,6 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root, so `py` package is importable when run directly
+
+from InquirerPy import inquirer
 
 from py.paths import ROOT_DIR
 from py.train.tasks import TASKS
@@ -52,18 +44,23 @@ def _raise_nofile_limit(target: int = 65535) -> None:
     resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
 
 
+def _select_task() -> str:
+    """Interactively pick a task. The task fixes the data path and all other flags."""
+    return inquirer.select(
+        message="Select training task:",
+        choices=sorted(TASKS),
+    ).execute()
+
+
+def _input_experiment(default: str) -> str:
+    """Prompt for the experiment (run/output) name, pre-filled with the task's default."""
+    return inquirer.text(
+        message="Experiment name:",
+        default=default,
+    ).execute()
+
+
 def main() -> int:
-    if len(sys.argv) < 2:
-        print(f"Usage: python py/train/run.py <task>")
-        print(f"Available tasks: {', '.join(sorted(TASKS))}")
-        return 2
-
-    task_name = sys.argv[1]
-    if task_name not in TASKS:
-        print(f"Unknown task: {task_name!r}")
-        print(f"Available: {', '.join(sorted(TASKS))}")
-        return 2
-
     _load_dotenv_if_present()
     _raise_nofile_limit()
 
@@ -72,7 +69,10 @@ def main() -> int:
 
     torchrun = str(VENV_TORCHRUN) if VENV_TORCHRUN.is_file() else "torchrun"
 
+    task_name = _select_task()
     cfg = TASKS[task_name]()
+    cfg.experiment = _input_experiment(cfg.experiment)
+
     cmd = [
         torchrun,
         "--nproc_per_node=1",
