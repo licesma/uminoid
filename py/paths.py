@@ -5,3 +5,4 @@ ROOT_DIR = PY_DIR.parent
 DATA_DIR = ROOT_DIR / "data"
 FINAL_DATA_DIR = ROOT_DIR / "final_data"
 TRAINING_DATA_DIR = ROOT_DIR / "training_data"
+RUNS_DIR = ROOT_DIR / ".runs"

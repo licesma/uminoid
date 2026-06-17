@@ -1,4 +1,4 @@
 destinations:
-  "yue:uminoid": "yue:~/repos/uminoid"
-  "jiageng:uminoid": "jiageng:~/repos/uminoid"
-  "jiageng:sicheng": "jiageng:~/hsc/Humanoid-Exo-Learning"
+  "yue": "yue:~/repos/uminoid"
+  "jiageng": "jiageng:~/repos/uminoid"
+  "gvl_1": "gvl_1:/data/esteban/repos/uminoid"

@@ -5,7 +5,7 @@ PY_DIR = Path(__file__).resolve().parents[2]  # uminoid/py
 sys.path.insert(0, str(PY_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from paths import DATA_DIR, TRAINING_DATA_DIR
+from paths import DATA_DIR, ROOT_DIR, RUNS_DIR, TRAINING_DATA_DIR
 
 import prompts
 from config_loader import selectable_destinations
@@ -14,6 +14,7 @@ from transfer import rsync_folder
 LOCAL_DIRS = {
     "data": DATA_DIR,
     "training_data": TRAINING_DATA_DIR,
+    ".runs": RUNS_DIR / "finetune",
 }
 
 
@@ -37,7 +38,9 @@ def main() -> int:
         return 1
     label = prompts.select_destination(list(destinations))
 
-    return rsync_folder(source_dir / folder, destinations[label], kind)
+    local_folder = source_dir / folder
+    remote_subdir = local_folder.parent.relative_to(ROOT_DIR)
+    return rsync_folder(local_folder, destinations[label], remote_subdir)
 
 
 if __name__ == "__main__":
