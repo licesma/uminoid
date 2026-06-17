@@ -26,6 +26,10 @@ COLLECT_BIN = os.path.join(REPO_ROOT, "cpp", "build", "collect")
 STREAM_URL  = "http://127.0.0.1:8080/stream.mjpg"
 IMU_URL     = "http://127.0.0.1:8080/imu"
 
+# Target camera orientation; the status line shows current minus these.
+GOAL_ROLL   = -7.3
+GOAL_PITCH  = -56.4
+
 # Approximate terminal cell size in pixels (only used to size the sixel image).
 # iTerm2 on Retina displays uses much larger cells than a plain xterm; tune
 # these if the image overflows or undershoots the dedicated pane.
@@ -135,23 +139,33 @@ def video_loop(top_row: int, video_rows: int, cols: int, stop: threading.Event) 
 
 
 def imu_loop(row: int, cols: int, stop: threading.Event) -> None:
-    """Poll /imu and paint a single status line at `row` (1-based). The line
+    """Poll /imu and paint a double-height status line spanning `row` and
+    `row+1` (1-based). It shows current orientation minus the goal. The line
     sits between the video pane and the collect TUI, outside the TUI's scroll
-    region, so repaints don't fight the child process."""
+    region, so repaints don't fight the child process.
+
+    Double height uses DEC private escapes: the SAME text is written twice,
+    once with ESC#3 (top half) and once with ESC#4 (bottom half). These also
+    imply double width, so glyphs are 2x in both axes."""
     while not stop.is_set():
         try:
             with urllib.request.urlopen(IMU_URL, timeout=1) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             pitch = float(data.get("pitch_deg", 0.0))
             roll  = float(data.get("roll_deg", 0.0))
-            text  = f"  Roll: {roll:+6.1f}°    Pitch: {pitch:+6.1f}°"
+            d_roll  = roll  - GOAL_ROLL
+            d_pitch = pitch - GOAL_PITCH
+            text  = f"  ΔRoll: {d_roll:+6.1f}°    ΔPitch: {d_pitch:+6.1f}°"
         except Exception:
-            text = "  Roll:   ---       Pitch:   ---"
-        text = text[:cols].ljust(cols)
+            text = "  ΔRoll:   ---       ΔPitch:   ---"
+        # Double-width cells are 2x wide, so a line holds half as many glyphs.
+        text = text[:max(0, cols // 2)]
         out  = b"\0337"                           # save cursor
-        out += f"\033[{row};1H".encode()         # move to status row
-        out += b"\033[2K"                         # clear line
-        out += text.encode("utf-8")
+        for i, half in enumerate((b"\033#3", b"\033#4")):
+            out += f"\033[{row + i};1H".encode()  # move to status half-row
+            out += b"\033[2K"                     # clear line
+            out += half                           # DECDHL top/bottom half
+            out += text.encode("utf-8")
         out += b"\0338"                           # restore cursor
         try:
             write_stdout(out)
@@ -172,8 +186,9 @@ def main() -> int:
 
     term_cols, term_rows = shutil.get_terminal_size()
     video_rows = max(8, term_rows // 2)
-    ui_top     = video_rows + 2   # +1 would sit flush; extra row avoids overflow
-    ui_rows    = term_rows - video_rows - 1
+    # Status line is double-height: it occupies rows video_rows+1 and +2.
+    ui_top     = video_rows + 3   # leave the two status rows above the UI
+    ui_rows    = term_rows - video_rows - 2
 
     # Fork ./collect under a pty so its RawMode and in-place redraws keep working.
     pid, master_fd = pty.fork()
@@ -205,7 +220,7 @@ def main() -> int:
         new_cols, new_rows = shutil.get_terminal_size()
         nonlocal video_rows
         video_rows = max(8, new_rows // 2)
-        set_pty_size(master_fd, new_rows - video_rows, new_cols)
+        set_pty_size(master_fd, new_rows - video_rows - 2, new_cols)
     signal.signal(signal.SIGWINCH, on_winch)
 
     vt = threading.Thread(
