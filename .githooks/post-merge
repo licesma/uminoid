@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs after every successful `git pull`/`git merge`.
+# Updates DIRECT submodules only (depth-1, no --recursive).
+#
+# Why not recursive: this repo has a circular submodule graph
+# (Humanoid-Exo-Learning <-> uminoid_exo_interface), so any recursive
+# submodule operation descends without bound and hangs. Depth-1 is safe
+# and fast, and checks out each direct submodule (e.g. Psi0) at its pin.
+git submodule update --init
