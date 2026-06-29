@@ -52,6 +52,12 @@ void SingleDex3Retargeter::nudge_thumb_rotation(float delta) {
                                                      std::memory_order_relaxed));
 }
 
+void SingleDex3Retargeter::set_thumb_rotation(float q) {
+    const auto b = (side_ == Dex3Side::Left ? Dex3BoundsLeft
+                                            : Dex3BoundsRight)[Dex3Joint::thumb_rotation];
+    thumb_rotation_q_.store(std::clamp(q, b.low, b.high), std::memory_order_relaxed);
+}
+
 SingleDex3Retargeter::JointPose
 SingleDex3Retargeter::compute_target(const opt<ManusHand>& hand) const {
     JointPose out{};

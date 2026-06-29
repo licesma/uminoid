@@ -10,6 +10,17 @@ sudo apt-get install git wget cmake build-essential
 # yaml-cpp
 sudo apt-get install libyaml-cpp-dev
 
+# ZMQ — C library (manus reader, AMO bridge, ZMQ camera)
+sudo apt-get install libzmq3-dev
+
+# cppzmq C++ header (zmq.hpp). Header-only, not packaged on Ubuntu 22.04 —
+# drop the single upstream header into the system include path.
+sudo wget -O /usr/local/include/zmq.hpp \
+  https://raw.githubusercontent.com/zeromq/cppzmq/v4.10.0/zmq.hpp
+
+# Eigen3 + URDF parsing (pinocchio rigid-body dynamics)
+sudo apt-get install libeigen3-dev liburdfdom-dev
+
 # Librealsense dependencies
 sudo apt-get install libssl-dev libusb-1.0-0-dev libudev-dev pkg-config libgtk-3-dev
 

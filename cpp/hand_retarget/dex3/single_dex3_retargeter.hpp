@@ -9,12 +9,7 @@
 
 /**
  * Retargets manus glove curls onto ONE Dex3-1 hand.
- *
- * Pure mapping layer. Active-joint open/closed q come from the URDF bounds
- * via dex3_retarget_config (no yaml: curl=0 is one bound endpoint, curl=1
- * is the other; direction lives in Dex3ActiveCurlEnd*). Static-joint hold
- * values come from Dex3StaticHoldQ*. The only per-deployment yaml input is
- * the manus normalization bounds, passed in here at construction.
+
  */
 class SingleDex3Retargeter {
 public:
@@ -27,10 +22,15 @@ public:
 
     void step(const opt<ManusHand>& hand);
 
-    // Adjusts the thumb_rotation target by delta rad, clamped to URDF bounds.
-    // thumb_rotation is a static-hold joint (not driven from the glove), so
-    // this is the operator's manual override knob for it. Thread-safe.
+    
     void nudge_thumb_rotation(float delta);
+
+    
+    void set_thumb_rotation(float q);
+
+    float thumb_rotation() const {
+        return thumb_rotation_q_.load(std::memory_order_relaxed);
+    }
 
     // Csv accessors (delegate to the controller).
     bool                        is_ready  () const { return controller_.is_ready();   }
